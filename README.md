@@ -22,10 +22,11 @@ off baseline takes one tap: **Nothing off baseline — save it**.
 **Home** is a dashboard. It shows only what still needs logging: a card for the
 evening, a card for the night that just ended. Before mid-afternoon the night
 comes first; after that the evening does. Anything already logged collapses
-into one dim line further down, still tappable to edit. Underneath is a strip
-of the last seven days, one column each, height being how many items were off
-baseline, and crash days in the warning colour. At the bottom is how long ago
-you last downloaded a backup.
+into one dim line further down, still tappable to edit.
+
+Under that is the **week score**, 0-100, and a seven day grid of sleep, PEM and
+how many items sat worse than baseline. At the bottom is how long ago you last
+downloaded a backup.
 
 **Evening** and **Morning** are not permanent tabs. You reach them from Home,
 and the tab appears only while you are on one, so there is a way back.
@@ -98,6 +99,38 @@ GitHub Pages takes about a minute to publish after a push. After that:
 
 So: yes, it updates itself, but only when opened online, and never mid-entry.
 
+## The week score
+
+One number, 0-100, for the last seven days. **100 is a day at your normal.** It
+is measured against your own baselines, so it says nothing about how you
+compare with a healthy person — only how this week sat against your usual.
+
+How it is built:
+
+- Each item's distance the wrong side of its baseline becomes 0 to 1, where 1
+  is as bad as that item goes. Being better than baseline counts as 0, never
+  as credit.
+- Sleep is inverted, because on that scale 3 is a good night.
+- The day's burden is the mean across items, and the day score is
+  `100 × (1 − burden)`.
+- The week weights recent days more, with a three day half life: today counts
+  1, three days back a half, six days back a quarter. Days with no entry are
+  skipped and the weights renormalised.
+
+What it deliberately leaves out:
+
+- The five *what the day asked of you* items. Being physically active is a
+  cause, not a symptom.
+- Values you have not stood behind. Every record starts pre-filled at baseline,
+  so a night you never logged would otherwise count as a normal night and
+  flatter the score. An item counts once you move it yourself, or once you
+  press Save day (evening items) or finish the morning (night items).
+- Days with fewer than 8 items entered, and weeks with fewer than 3 days.
+
+Its main limitation: every item counts the same, so a crash weighs exactly as
+much as mild constipation. If that turns out to matter, the fix is per-item
+weights in `itemBurden`.
+
 ## Design rules, on purpose
 
 - Dark, low-glare. No white anywhere, no bright surfaces.
@@ -106,6 +139,11 @@ So: yes, it updates itself, but only when opened online, and never mid-entry.
 - One scrolling column, 460px max, system font.
 - A dot after a label means that value is off baseline. The dashed outline in
   a row marks the baseline, whether or not it is the value you picked.
+- On the dashboard, colour is distance from your baseline, not the raw value:
+  green better, grey at it, red worse. Every cell prints its number, so the
+  colour never carries the value on its own.
+- Sleep gets a valenced ramp of its own on the entry screen, because 3 is a
+  good night there while 3 means worst on every other row.
 
 ## Not in this version
 

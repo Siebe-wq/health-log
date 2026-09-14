@@ -307,27 +307,53 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .card.done .line { display: flex; justify-content: space-between; gap: 8px; }
 .card.done .meta { color: var(--dim); }
 
-/* Seven day strip */
-.strip { display: flex; gap: 6px; margin-bottom: 6px; }
-.strip button {
-  flex: 1;
-  min-height: 64px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 6px 4px;
+/* Week score */
+.score {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
 }
-.strip button[data-today="1"] { border-color: var(--dim); }
-/* A day with no entry at all is an empty dashed column. */
-.strip button[data-empty="1"] { border-style: dashed; }
-.strip .bar { width: 100%; border-radius: 2px; }
-.strip .d { font-size: 11px; color: var(--dim); }
-.strip-cap { font-size: 13px; color: var(--dim); margin-bottom: 20px; }
+.score-label { font-size: 13px; color: var(--dim); margin-bottom: 4px; }
+.score-head { display: flex; align-items: baseline; gap: 10px; }
+.score-num { font-size: 34px; line-height: 1; }
+.score-band { font-size: 14px; color: var(--dim); }
+.score-cap { font-size: 12px; color: var(--dim); margin-top: 8px; }
+.score-wait { font-size: 15px; color: var(--dim); }
+
+/* Seven day grid */
+.grid-wrap { margin-bottom: 20px; }
+.grid {
+  display: grid;
+  grid-template-columns: 44px repeat(7, 1fr);
+  gap: 3px;
+  align-items: stretch;
+}
+.grid-day, .grid-label {
+  font-size: 11px;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.grid-day.now { color: var(--text); }
+.grid-label { justify-content: flex-start; font-size: 12px; }
+.cell {
+  min-height: 34px;
+  border: none;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  padding: 0;
+}
+.cell.empty {
+  border: 1px dashed var(--line);
+  color: var(--dim);
+  background: none;
+}
+.strip-cap { font-size: 12px; color: var(--dim); margin-top: 8px; }
 
 .note-card {
   background: var(--surface);

@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.2.0";
+var VERSION = "v1.3.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
@@ -10,6 +10,37 @@ var STORE_VERSION = 2;
 
 var RAMP4 = ["#2B333C", "#5C4A2C", "#8A6A31", "#C08A4B"];
 var RAMP6 = ["#2B333C", "#4A4030", "#6B5730", "#8C6E33", "#AA7E3E", "#C9884A"];
+
+/* Sleep runs the other way to everything else: 3 is a good night. It gets a
+   valenced ramp so a good night is never painted in the alarm colour. */
+var SLEEP_RAMP = ["#C4704F", "#7A4436", "#454F5C", "#53946A"];
+
+/* Green / grey / red against your own baseline. Two steps each side, widely
+   separated: a mid red sits in a contrast valley where neither text colour
+   clears 4.5:1. Every cell prints its value, so the colour is never the only
+   thing carrying the number. */
+var VAL = {
+  good2: "#53946A",   /* two or more better than baseline */
+  good1: "#35604A",
+  same:  "#454F5C",
+  bad1:  "#7A4436",
+  bad2:  "#C4704F",   /* two or more worse */
+  none:  "transparent"
+};
+/* Whichever of the two text colours actually reads on each fill. */
+var INK = {
+  "#53946A": "#14181C", "#35604A": "#C6CED6", "#454F5C": "#C6CED6",
+  "#7A4436": "#C6CED6", "#C4704F": "#14181C", "#C08A4B": "#14181C"
+};
+
+function valenceFill(delta) {
+  if (delta === null || delta === undefined) return VAL.none;
+  if (delta <= -2) return VAL.good2;
+  if (delta === -1) return VAL.good1;
+  if (delta === 0) return VAL.same;
+  if (delta === 1) return VAL.bad1;
+  return VAL.bad2;
+}
 
 /* ---------- items ---------- */
 
@@ -46,7 +77,7 @@ var EVENING_SECTIONS = [
 ];
 
 var MORNING_ITEMS = [
-  { key: "sleep", label: "Sleep" },
+  { key: "sleep", label: "Sleep", ramp: SLEEP_RAMP, higherIsBetter: true },
   { key: "episode", label: "Dysautonomic episode", max: 5, ramp: RAMP6 },
   { key: "syncope", label: "Near-syncope", max: 1, labels: ["no", "yes"] }
 ];
@@ -54,6 +85,8 @@ var MORNING_ITEMS = [
 var EVENING_ITEMS = [];
 EVENING_SECTIONS.forEach(function (s) { EVENING_ITEMS = EVENING_ITEMS.concat(s.items); });
 var ALL_ITEMS = EVENING_ITEMS.concat(MORNING_ITEMS);
+var ITEM_BY_KEY = {};
+ALL_ITEMS.forEach(function (i) { ITEM_BY_KEY[i.key] = i; });
 var EVENING_KEYS = EVENING_ITEMS.map(function (i) { return i.key; });
 var ALL_KEYS = ALL_ITEMS.map(function (i) { return i.key; });
 
@@ -264,17 +297,25 @@ function ratingRow(item, getValue, setValue, baselineOf, onAfter) {
       var isBase = base === n;
       b.setAttribute("aria-pressed", on ? "true" : "false");
       b.setAttribute("data-baseline", isBase ? "1" : "0");
-      b.setAttribute("data-dark", n >= 2 ? "1" : "0");
-      b.style.background = on ? ramp[Math.min(n, ramp.length - 1)] : "";
+      var fill = ramp[Math.min(n, ramp.length - 1)];
+      /* The warm ramps go dark-on-fill from step 2 up. A valenced ramp is not
+         monotone in lightness, so it says which ink it takes. */
+      b.setAttribute("data-dark", (INK[fill] || (n >= 2 ? "#14181C" : "")) === "#14181C" ? "1" : "0");
+      b.style.background = on ? fill : "";
       /* The baseline keeps its dashed outline even while it is the value you
          picked, so normal is always visible. On a filled button the dash is
          drawn in that button's own text colour. */
       b.style.borderColor = isBase
-        ? (on ? (n >= 2 ? "#14181C" : "var(--text)") : "var(--dim)")
-        : (on ? ramp[Math.min(n, ramp.length - 1)] : "");
+        ? (on ? (b.getAttribute("data-dark") === "1" ? "#14181C" : "var(--text)") : "var(--dim)")
+        : (on ? fill : "");
     });
     var off = base !== undefined && value !== undefined && value !== base;
     dot.style.display = off ? "" : "none";
+    if (off) {
+      /* The dot says which way it went, not just that it moved. */
+      var worse = item.higherIsBetter ? value < base : value > base;
+      dot.style.color = worse ? "var(--accent)" : "#6FAF87";
+    }
   }
   refresh();
   return { el: el("div", { class: "row" }, [label, opts]), refresh: refresh };
@@ -293,6 +334,79 @@ function dateNav(getDate, setDate, caption) {
     el("button", { type: "button", "aria-label": "Next day", text: "›",
       onclick: function () { setDate(shiftDay(getDate(), 1)); } })
   ]);
+}
+
+/* ---------- scoring ---------- */
+
+/* The score is about how you were, not what the day asked of you. Being
+   physically active is a cause, not a symptom, so those five items are left
+   out of it. */
+var LOAD_KEYS = ["physical", "mental", "social", "emotional", "pacing"];
+var SCORE_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) < 0; });
+
+/* How far one item sits the wrong side of its baseline, as 0..1.
+   0 = at your normal or better. 1 = as bad as that item goes. */
+function itemBurden(item, value, base) {
+  if (value === undefined || base === undefined) return null;
+  var max = item.max === undefined ? 3 : item.max;
+  var headroom = item.higherIsBetter ? base : max - base;
+  if (headroom <= 0) return null;            /* no room to get worse: no signal */
+  var worse = item.higherIsBetter ? base - value : value - base;
+  return Math.max(0, Math.min(1, worse / headroom));
+}
+
+/* Does this item on this day carry a value you actually stand behind?
+
+   Every record is created pre-filled at baseline, so a value being present
+   means nothing on its own — a night you never logged would otherwise count
+   as a normal night and quietly flatter the score. It counts if you moved it
+   yourself, or if you pressed Save day (evening items) or finished the
+   morning (night items), which is where leaving something at baseline becomes
+   a statement that it was normal. */
+var MORNING_KEYS = MORNING_ITEMS.map(function (i) { return i.key; });
+
+function itemCounts(entry, key) {
+  if (entry.touched && entry.touched[key]) return true;
+  if (MORNING_KEYS.indexOf(key) >= 0) return nightIsLogged(entry);
+  return !!entry.complete;
+}
+
+/* A day part way through entry says almost nothing. One item tapped at its
+   worst would otherwise read as a score of 0. Half the items is the floor for
+   a day to count at all; pressing Save day clears it comfortably. */
+var MIN_SCORED = 8;
+
+/* Mean burden across the items that day actually stands behind. */
+function dayBurden(entry) {
+  if (!entry) return null;
+  var sum = 0, n = 0;
+  SCORE_ITEMS.forEach(function (it) {
+    if (!itemCounts(entry, it.key)) return;
+    var b = itemBurden(it, entry.v[it.key], state.baselines[it.key]);
+    if (b !== null) { sum += b; n++; }
+  });
+  return n < MIN_SCORED ? null : sum / n;
+}
+
+function dayScore(entry) {
+  var b = dayBurden(entry);
+  return b === null ? null : Math.round(100 * (1 - b));
+}
+
+/* Seven days ending at endDate, weighted by recency with a three day half
+   life: today counts 1, three days back counts a half, six days back a
+   quarter. Days with no entry are skipped and the weights renormalised.
+   Under three days of data there is nothing worth averaging. */
+function weekScore(endDate) {
+  var sum = 0, weight = 0, days = 0;
+  for (var i = 0; i < 7; i++) {
+    var b = dayBurden(state.days[shiftDay(endDate, -i)]);
+    if (b === null) continue;
+    var w = Math.pow(0.5, i / 3);
+    sum += w * b; weight += w; days++;
+  }
+  if (days < 3) return { score: null, days: days };
+  return { score: Math.round(100 * (1 - sum / weight)), days: days };
 }
 
 /* ---------- home ---------- */
@@ -331,44 +445,104 @@ function doneLine(text, onclick) {
   ]);
 }
 
-/* Last seven days, one column each: how many items were off baseline.
-   A crash day is drawn in the warning colour. Tap a column to open that day. */
-function weekStrip() {
+/* The week in one number, plus how it compares with the week before. */
+function scoreTile() {
   var t = today();
-  var cols = [];
-  var max = 4;
-  for (var i = 6; i >= 0; i--) {
-    var d = shiftDay(t, -i);
-    var e = state.days[d];
-    var count = e ? offBaselineKeys(e, ALL_KEYS).length : null;
-    if (count !== null && count > max) max = count;
-    cols.push({ date: d, entry: e, count: count });
+  var now = weekScore(t);
+  var box = el("div", { class: "score" });
+  if (now.score === null) {
+    box.appendChild(el("div", { class: "score-label", text: "Week score" }));
+    box.appendChild(el("div", { class: "score-wait",
+      text: now.days === 0 ? "Needs a few logged days" : "Needs 3 logged days, has " + now.days }));
+    return box;
   }
-  var strip = el("div", { class: "strip" });
-  cols.forEach(function (c) {
-    var bar = el("div", { class: "bar" });
-    if (c.count === null) {
-      bar.style.height = "0";
-    } else {
-      bar.style.height = (5 + Math.round(33 * c.count / max)) + "px";
-      var share = c.count / max;
-      bar.style.background = c.entry.v.crash ? "var(--warn)"
-        : RAMP4[c.count === 0 ? 0 : share <= 0.34 ? 1 : share <= 0.67 ? 2 : 3];
-    }
-    var p = c.date.split("-").map(Number);
-    strip.appendChild(el("button", {
-      type: "button", "data-today": c.date === t ? "1" : "0",
-      "data-empty": c.count === null ? "1" : "0",
-      "aria-label": pretty(c.date) + (c.count === null ? ", no entry" : ", " + c.count + " off baseline"),
-      onclick: function () { openEvening(c.date); }
-    }, [
-      bar,
-      el("div", { class: "d", text: DAY_NAMES[new Date(p[0], p[1] - 1, p[2]).getDay()].charAt(0) })
-    ]));
+  var band = now.score >= 85 ? ["#6FAF87", "at or near your normal"]
+    : now.score >= 70 ? ["#C6CED6", "somewhat below your normal"]
+    : ["#D08A6B", "well below your normal"];
+  var head = el("div", { class: "score-head" }, [
+    el("span", { class: "score-num", text: String(now.score) }),
+    el("span", { class: "score-band", text: band[1] })
+  ]);
+  head.querySelector(".score-num").style.color = band[0];
+  box.appendChild(el("div", { class: "score-label", text: "Week score" }));
+  box.appendChild(head);
+
+  var before = weekScore(shiftDay(t, -7));
+  var line = "Against your own baseline, recent days weighted";
+  if (before.score !== null) {
+    var d = now.score - before.score;
+    line = (d === 0 ? "Level with" : Math.abs(d) + " " + (d > 0 ? "better than" : "worse than")) +
+      " the week before · " + line;
+  }
+  box.appendChild(el("div", { class: "score-cap", text: line }));
+  return box;
+}
+
+/* Seven days, three rows: sleep, PEM, and how many items sat worse than
+   baseline. Colour is the distance from your baseline, not the raw value, and
+   every cell prints its number so the colour is never doing the work alone. */
+function weekGrid() {
+  var t = today();
+  var rows = [
+    { key: "sleep", label: "Sleep" },
+    { key: "pem", label: "PEM" },
+    { key: null, label: "Worse" }
+  ];
+  var grid = el("div", { class: "grid" });
+  grid.appendChild(el("div", {}));                       /* corner */
+
+  var dates = [];
+  for (var i = 6; i >= 0; i--) dates.push(shiftDay(t, -i));
+
+  dates.forEach(function (d) {
+    var p = d.split("-").map(Number);
+    grid.appendChild(el("div", { class: "grid-day" + (d === t ? " now" : ""),
+      text: DAY_NAMES[new Date(p[0], p[1] - 1, p[2]).getDay()].charAt(0) }));
   });
-  return el("div", {}, [
-    strip,
-    el("div", { class: "strip-cap", text: "Last 7 days — items off baseline, crash days in red" })
+
+  rows.forEach(function (row) {
+    grid.appendChild(el("div", { class: "grid-label", text: row.label }));
+    dates.forEach(function (d) {
+      var e = state.days[d];
+      var text = "–", fill = VAL.none, delta = null;
+      if (e && dayBurden(e) !== null) {
+        if (row.key === null) {
+          /* items sitting worse than baseline, in the same two red steps */
+          var worse = SCORE_ITEMS.filter(function (it) {
+            if (!itemCounts(e, it.key)) return false;
+            var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
+            return b !== null && b > 0;
+          }).length;
+          text = String(worse);
+          delta = worse === 0 ? 0 : worse <= 2 ? 1 : 2;
+        } else {
+          var v = itemCounts(e, row.key) ? e.v[row.key] : undefined;
+          if (v !== undefined) {
+            var item = ITEM_BY_KEY[row.key];
+            var base = state.baselines[row.key];
+            text = String(v);
+            delta = item.higherIsBetter ? base - v : v - base;
+          }
+        }
+        if (delta !== null) fill = valenceFill(delta);
+      }
+      var cell = el("button", {
+        class: "cell" + (fill === VAL.none ? " empty" : ""), type: "button", text: text,
+        "aria-label": pretty(d) + " " + row.label + " " + text,
+        onclick: function () { openEvening(d); }
+      });
+      if (fill !== VAL.none) {
+        cell.style.background = fill;
+        cell.style.color = INK[fill];
+      }
+      grid.appendChild(cell);
+    });
+  });
+
+  return el("div", { class: "grid-wrap" }, [
+    grid,
+    el("div", { class: "strip-cap",
+      text: "Green better than baseline, grey at it, red worse" })
   ]);
 }
 
@@ -443,7 +617,8 @@ function homeScreen() {
   }
 
   wrap.appendChild(el("div", { class: "spacer" }));
-  wrap.appendChild(weekStrip());
+  wrap.appendChild(scoreTile());
+  wrap.appendChild(weekGrid());
   done.forEach(function (c) { wrap.appendChild(c); });
   wrap.appendChild(backupLine());
   return wrap;
