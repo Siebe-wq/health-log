@@ -376,3 +376,21 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   padding: 0;
 }
 .backup.stale { color: var(--warn); }
+
+/* Hours slept stepper */
+.stepper { display: flex; gap: 8px; align-items: stretch; }
+.stepper .btn { width: 72px; font-size: 22px; }
+.hours-field {
+  flex: 1;
+  text-align: center;
+  font-size: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  min-height: 46px;
+  padding: 0 8px;
+  -moz-appearance: textfield;
+}
+.hours-field::-webkit-outer-spin-button,
+.hours-field::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

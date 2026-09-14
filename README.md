@@ -24,9 +24,9 @@ evening, a card for the night that just ended. Before mid-afternoon the night
 comes first; after that the evening does. Anything already logged collapses
 into one dim line further down, still tappable to edit.
 
-Under that are two numbers — the **week score** (how it has been) and **room
-left** (what the next day or two are exposed to) — and a seven day grid of
-sleep, PEM, symptoms above baseline and demand above it. At the bottom is how
+Under that are two numbers — the **week score** (how it has been) and the
+**PEM predictor** (what the next day or two are exposed to) — and a seven day
+grid of sleep, PEM, symptoms above baseline and demand above it. At the bottom is how
 long ago you last downloaded a backup.
 
 **Evening** and **Morning** are not permanent tabs. You reach them from Home,
@@ -34,7 +34,7 @@ and the tab appears only while you are on one, so there is a way back.
 
 **History** is the full list of days, plus the backup buttons.
 
-**Baseline** is your normal value for each of the 22 items.
+**Baseline** is your normal value for each of the 22 rated items. Hours slept has no baseline.
 
 ## Putting it on the phone
 
@@ -132,38 +132,72 @@ Its main limitation: every item counts the same, so a crash weighs exactly as
 much as mild constipation. If that turns out to matter, the fix is per-item
 weights in `itemBurden`.
 
-## Room left
+## PEM predictor
 
-The forward-looking half, also 0-100 and also higher-is-better, so the two
-numbers on Home never have to be read in opposite directions at three in the
-morning. 100 means the last few days asked no more of you than usual.
+The forward-looking number. It runs the **opposite way to the week score**: a
+high number is a warning, not a good sign. The band word next to it always says
+which way it points — low, raised, high.
 
-It is built only from the five demand items — physically active, mentally
-demanding, socially demanding, emotionally stressful, and pacing — the same
-five the week score leaves out. Pacing counts as demand because its scale is
-"low = better", so a high value is a day you pushed through rather than paced.
+### Two axes, which are easy to confuse
 
-The weighting is the part that makes it forward-looking. PEM is delayed,
-typically by 12 to 48 hours, and it stacks: several ordinary days in a row can
-do what no single day would. So today and yesterday carry full weight — their
-PEM is still in flight — and the two days before that taper off, because their
-effect has largely already arrived:
+- **Six items, within a day.** The five demand items — physically active,
+  mentally demanding, socially demanding, emotionally stressful, pacing — plus
+  sleep quality. Each becomes a 0 to 1 burden the same way the week score does,
+  and the six are averaged into one burden for that day.
+- **Four days, across the window.** Those day burdens are then weighted and
+  combined.
+
+So: six items make a day, four days make the score.
+
+Pacing counts as demand because its scale is "low = better", so a high value is
+a day you pushed through rather than paced. Sleep runs the other way and the
+burden function already knows it.
+
+**Sleep appears in both numbers on purpose.** In the week score it is a
+symptom, part of how the week went. Here it is a risk factor: a bad night
+leaves less to spend the next day. Same reading, two jobs.
+
+### The day weights
+
+PEM is delayed, typically by 12 to 48 hours, and it stacks: several ordinary
+days in a row can do what no single day would. So today and yesterday carry
+full weight — their PEM is still in flight — and the two days before taper off,
+because their effect has largely already arrived:
 
 ```
 today 1 · yesterday 1 · 2 days back 0.6 · 3 days back 0.3
 ```
 
-The same heavy day therefore costs about 29 points when it is today and about 9
-when it is three days back.
+The same heavy day therefore costs about three times as much when it is today
+as when it is three days back.
 
-The tile also says which situation you are in. If room is low and the last two
-days still score well, the cost has not landed yet and the next day or two are
-the exposed part. If room is low and symptoms are already down, it has landed.
+Date keying does the right thing here without special handling. A night belongs
+to the evening date, so tonight's sleep sits on today's record and has not
+happened yet — and the "values you stand behind" rule leaves it out until you
+log the morning.
 
-**These weights are a rule of thumb, not a measured curve.** There is no
+### What it says
+
+If the number is up and the last two days still score well, the cost has not
+landed yet and the next day or two are the exposed part. If the number is up
+and symptoms are already down, it has landed.
+
+**The weights are a rule of thumb, not a measured curve.** There is no
 validated formula for predicting PEM from self-reported exertion. The nearest
 research idea is Leonard Jason's energy envelope work, which is correlational
-and small. Read the number as a prompt to think, not a forecast.
+and small. The name says predictor; read it as a prompt to think.
+
+## Hours slept
+
+Recorded on the Morning screen with half hour steps, so it needs no keyboard in
+the dark, and the field still takes a typed number. It is stored and exported
+but **does not feed the PEM predictor**: it has no baseline to compare against,
+and hours in bed is a poor proxy when you are lying down most of the day.
+Sleep quality carries that job. Once there is a few months of data it would be
+worth checking whether hours adds anything.
+
+It exports as `Sleep hours`. The 0-3 rating still exports as `Sleep`, the name
+your Visible history uses, even though the screen now labels it Sleep quality.
 
 ## Design rules, on purpose
 

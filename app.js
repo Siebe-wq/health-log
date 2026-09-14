@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.4.0";
+var VERSION = "v1.5.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
@@ -77,7 +77,7 @@ var EVENING_SECTIONS = [
 ];
 
 var MORNING_ITEMS = [
-  { key: "sleep", label: "Sleep", ramp: SLEEP_RAMP, higherIsBetter: true },
+  { key: "sleep", label: "Sleep quality", ramp: SLEEP_RAMP, higherIsBetter: true },
   { key: "episode", label: "Dysautonomic episode", max: 5, ramp: RAMP6 },
   { key: "syncope", label: "Near-syncope", max: 1, labels: ["no", "yes"] }
 ];
@@ -114,7 +114,8 @@ var EXPORT_NAME = {
   social: "Socially demanding", emotional: "Emotionally stressful",
   pacing: "Pacing (low = better)", sleep: "Sleep",
   episode: "Dysautonomic episode (0-5)", syncope: "Near-syncope",
-  lastBite: "Time of last bite", stomach: "Stomach at bedtime"
+  lastBite: "Time of last bite", stomach: "Stomach at bedtime",
+  sleepHours: "Sleep hours"
 };
 
 var CATEGORY = {
@@ -125,7 +126,8 @@ var CATEGORY = {
   hyper: "Custom", constipation: "Gastrointestinal", diarrhea: "Gastrointestinal",
   physical: "Physical", mental: "Cognitive", social: "Social",
   emotional: "Emotional", pacing: "Custom", sleep: "Sleep",
-  episode: "Custom", syncope: "Custom", lastBite: "Custom", stomach: "Custom"
+  episode: "Custom", syncope: "Custom", lastBite: "Custom", stomach: "Custom",
+  sleepHours: "Sleep"
 };
 
 /* ---------- dates ---------- */
@@ -221,7 +223,7 @@ function flash(text) {
 function emptyEntry(date) {
   return {
     date: date, v: Object.assign({}, state.baselines), touched: {},
-    lastBite: "", stomach: "", tags: [], note: "", nightNote: "",
+    lastBite: "", stomach: "", sleepHours: "", tags: [], note: "", nightNote: "",
     complete: false, morningDone: false, savedAt: null, updatedAt: null
   };
 }
@@ -395,11 +397,20 @@ function dayScore(entry) {
 
 /* ---------- room left: the forward-looking half ---------- */
 
-/* The five demand items, which the symptom score deliberately leaves out.
-   Here they are the whole point. All of them read higher = more demand,
-   pacing included: its label is "low = better", so a high value is a day you
-   pushed through rather than paced. */
-var LOAD_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) >= 0; });
+/* Six inputs: the five demand items the week score leaves out, plus sleep
+   quality. All the demand items read higher = more demand, pacing included —
+   its label is "low = better", so a high value is a day you pushed through
+   rather than paced. Sleep runs the other way and itemBurden already knows it.
+
+   Sleep is in both numbers on purpose. In the week score it is a symptom, part
+   of how the week went. Here it is a risk factor: a bad night leaves less to
+   spend the next day. Same reading, two jobs.
+
+   Note the two axes, which are easy to confuse: these six items are averaged
+   into one burden for a day, and then four DAYS of that burden are weighted
+   below. Six items, four days. */
+var DEMAND_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) >= 0; });
+var LOAD_ITEMS = DEMAND_ITEMS.concat([ITEM_BY_KEY.sleep]);
 var MIN_LOAD_ITEMS = 3;
 
 function loadBurden(entry) {
@@ -426,19 +437,18 @@ function loadBurden(entry) {
    Treat the number as a prompt to think, not a forecast. */
 var LOAD_WEIGHTS = [1, 1, 0.6, 0.3];
 
-/* Scored the same direction as the week score — higher is better, green is
-   good — so the two numbers on Home never have to be read in opposite
-   directions at three in the morning. 100 means the last few days asked no
-   more of you than usual. */
-function roomLeft(endDate) {
+/* Runs the opposite way to the week score: here a high number is a warning,
+   not a good sign, because that is the only reading of "PEM predictor" that
+   makes sense. The band word next to it always says which way it points. */
+function pemRisk(endDate) {
   var sum = 0, weight = 0, days = 0;
   for (var i = 0; i < LOAD_WEIGHTS.length; i++) {
     var b = loadBurden(state.days[shiftDay(endDate, -i)]);
     if (b === null) continue;
     sum += LOAD_WEIGHTS[i] * b; weight += LOAD_WEIGHTS[i]; days++;
   }
-  if (days < 2) return { room: null, days: days };
-  return { room: Math.round(100 * (1 - sum / weight)), days: days };
+  if (days < 2) return { risk: null, days: days };
+  return { risk: Math.round(100 * (sum / weight)), days: days };
 }
 
 /* Has the cost already arrived, or is it still coming? */
@@ -538,28 +548,28 @@ function scoreTile() {
 }
 
 /* What the next day or two are exposed to. */
-function roomTile() {
+function pemTile() {
   var t = today();
-  var now = roomLeft(t);
+  var now = pemRisk(t);
   var box = el("div", { class: "score" });
-  box.appendChild(el("div", { class: "score-label", text: "Room left" }));
-  if (now.room === null) {
+  box.appendChild(el("div", { class: "score-label", text: "PEM predictor" }));
+  if (now.risk === null) {
     box.appendChild(el("div", { class: "score-wait",
       text: "Needs 2 of the last 4 days, has " + now.days }));
     return box;
   }
-  var band = now.room >= 80 ? ["#6FAF87", "within your usual"]
-    : now.room >= 60 ? ["#C6CED6", "above your usual"]
-    : ["#D08A6B", "well above your usual"];
+  var band = now.risk <= 20 ? ["#6FAF87", "low"]
+    : now.risk <= 40 ? ["#C6CED6", "raised"]
+    : ["#D08A6B", "high"];
   var head = el("div", { class: "score-head" }, [
-    el("span", { class: "score-num", text: String(now.room) }),
+    el("span", { class: "score-num", text: String(now.risk) }),
     el("span", { class: "score-band", text: band[1] })
   ]);
   head.querySelector(".score-num").style.color = band[0];
   box.appendChild(head);
 
   var reading;
-  if (now.room >= 80) {
+  if (now.risk <= 20) {
     reading = "The last few days asked no more of you than usual.";
   } else {
     var holding = symptomsHoldingUp(t);
@@ -568,7 +578,7 @@ function roomTile() {
       : "PEM usually lands 12 to 48 hours later — the next day or two are the exposed part.";
   }
   box.appendChild(el("div", { class: "score-cap",
-    text: reading + " · 4 days of demand and pacing, a rule of thumb" }));
+    text: reading + " · 6 items over 4 days, a rule of thumb" }));
   return box;
 }
 
@@ -607,7 +617,7 @@ function weekGrid() {
         if (row.key === null) {
           /* how many items sat above baseline, in the same two red steps:
              symptoms for Worse, the five demand items for Push */
-          var above = (row.load ? LOAD_ITEMS : SCORE_ITEMS).filter(function (it) {
+          var above = (row.load ? DEMAND_ITEMS : SCORE_ITEMS).filter(function (it) {
             if (!itemCounts(e, it.key)) return false;
             var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
             return b !== null && b > 0;
@@ -717,7 +727,7 @@ function homeScreen() {
 
   wrap.appendChild(el("div", { class: "spacer" }));
   wrap.appendChild(scoreTile());
-  wrap.appendChild(roomTile());
+  wrap.appendChild(pemTile());
   wrap.appendChild(weekGrid());
   done.forEach(function (c) { wrap.appendChild(c); });
   wrap.appendChild(backupLine());
@@ -902,6 +912,37 @@ function morningScreen() {
     wrap.appendChild(row.el);
   });
 
+  /* Hours slept. Half hour steps on the buttons so it needs no keyboard in the
+     dark; the field still takes a typed number if you want to be exact. */
+  var hours = el("input", { type: "number", step: "0.5", min: "0", max: "24",
+    inputmode: "decimal", class: "hours-field", placeholder: "–" });
+  hours.value = entry.sleepHours === undefined || entry.sleepHours === null ? "" : entry.sleepHours;
+  function writeHours(v) {
+    var n = v === "" ? "" : Math.max(0, Math.min(24, Math.round(parseFloat(v) * 2) / 2));
+    if (n !== "" && isNaN(n)) n = "";
+    hours.value = n;
+    update(date, function (e) { e.sleepHours = n; });
+    saveSoon(200);
+  }
+  hours.addEventListener("change", function () { writeHours(hours.value); });
+  function step(by) {
+    /* From blank, the first press lands on 8 rather than 8.5 — it is a
+       starting point to adjust from, not an increment. */
+    var cur = parseFloat(hours.value);
+    writeHours(isNaN(cur) ? 8 : cur + by);
+    saveNow();
+  }
+  wrap.appendChild(section("Hours slept", [
+    el("div", { class: "stepper" }, [
+      el("button", { class: "btn", type: "button", text: "−", "aria-label": "Half an hour less",
+        onclick: function () { step(-0.5); } }),
+      hours,
+      el("button", { class: "btn", type: "button", text: "+", "aria-label": "Half an hour more",
+        onclick: function () { step(0.5); } })
+    ]),
+    el("div", { class: "note-line", text: "Time asleep, not time lying down. Leave it blank if you have no idea." })
+  ]));
+
   var nightNote = el("textarea", { rows: "5", placeholder: "Written last night, or add to it now" });
   nightNote.value = entry.nightNote || "";
   nightNote.addEventListener("input", function () {
@@ -961,6 +1002,9 @@ function backupCsv() {
       rows.push([d, EXPORT_NAME[k], CATEGORY[k], e.v[k],
         state.baselines[k] === undefined ? "" : state.baselines[k]]);
     });
+    if (e.sleepHours !== "" && e.sleepHours !== undefined && e.sleepHours !== null) {
+      rows.push([d, EXPORT_NAME.sleepHours, CATEGORY.sleepHours, e.sleepHours, ""]);
+    }
     if (e.lastBite) rows.push([d, EXPORT_NAME.lastBite, CATEGORY.lastBite, e.lastBite, ""]);
     if (e.stomach) rows.push([d, EXPORT_NAME.stomach, CATEGORY.stomach, e.stomach, ""]);
     if (e.tags && e.tags.length) rows.push([d, "Tags", "Note", e.tags.join("|"), ""]);
