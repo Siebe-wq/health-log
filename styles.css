@@ -1,0 +1,261 @@
+/* Daily log — colours and sizes are fixed by the build brief. Tested on the
+   owner's phone with colour filters on. Do not brighten anything. */
+
+:root {
+  --bg: #0F1216;
+  --surface: #171C22;
+  --surface-up: #1D242B;
+  --line: #252D36;
+  --text: #C6CED6;
+  --dim: #77828E;
+  --accent: #C08A4B;
+  --warn: #C4704F;
+  --on-fill: #14181C;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.35;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* No motion anywhere. */
+*, *::before, *::after {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+.col {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: calc(12px + env(safe-area-inset-top)) 0 12px;
+}
+.tabs button {
+  flex: 1;
+  min-height: 46px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--dim);
+  font-size: 14px;
+}
+.tabs button[aria-selected="true"] {
+  background: var(--surface-up);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+/* Sections */
+.section { margin-bottom: 20px; }
+.section-head {
+  font-size: 14px;
+  color: var(--dim);
+  font-weight: 400;
+  margin: 0 0 8px;
+}
+.hint {
+  font-size: 14px;
+  color: var(--dim);
+  margin-bottom: 16px;
+}
+
+/* Date navigation */
+.datenav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.datenav button {
+  min-width: 56px;
+  min-height: 46px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 18px;
+}
+.datenav .caption { font-size: 14px; text-align: center; flex: 1; }
+.datenav .caption .sub { color: var(--dim); }
+
+/* Rating rows */
+.row { margin-bottom: 16px; }
+.row .label {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.row .dot {
+  color: var(--accent);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.opts { display: flex; gap: 8px; }
+.opts button {
+  flex: 1;
+  min-height: 46px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 15px;
+  padding: 0 2px;
+}
+.opts button[data-baseline="1"][aria-pressed="false"] {
+  border: 1px dashed var(--dim);
+}
+.opts button[aria-pressed="true"] { color: var(--text); }
+.opts button[aria-pressed="true"][data-dark="1"] { color: var(--on-fill); }
+
+/* Generic buttons */
+.pair { display: flex; gap: 8px; margin-bottom: 20px; }
+.btn {
+  min-height: 46px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 15px;
+  padding: 0 12px;
+}
+.btn.wide { width: 100%; }
+.btn.raised { background: var(--surface-up); }
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-fill);
+  min-height: 56px;
+  font-size: 16px;
+  width: 100%;
+}
+.pair .btn { flex: 1; }
+
+/* Inputs */
+input[type="time"], textarea, input[type="file"] {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 12px;
+  font-size: 15px;
+  min-height: 46px;
+}
+textarea { resize: vertical; }
+input[type="time"] { color-scheme: dark; }
+.field-label { font-size: 15px; margin-bottom: 8px; }
+.spacer { height: 16px; }
+
+/* Tags */
+.tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.tags button {
+  min-height: 46px;
+  border-radius: 23px;
+  padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 14px;
+}
+.tags button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-fill);
+}
+
+/* History */
+.day {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  min-height: 46px;
+  color: var(--text);
+}
+.day.draft { border-color: #20262E; color: var(--dim); }
+.day .line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+.day .meta { color: var(--dim); font-size: 13px; text-align: right; }
+
+/* Messages */
+.msg { font-size: 14px; color: var(--accent); margin-bottom: 12px; }
+.note-line { font-size: 14px; color: var(--dim); text-align: center; margin-top: 8px; }
+
+.banner {
+  background: var(--surface);
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.banner .small { color: var(--dim); font-size: 13px; margin-top: 8px; }
+
+/* Footer */
+.foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 11px;
+  padding-top: 16px;
+}
+.foot button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 4px;
+}
+
+/* The native file button is bright grey, so it is hidden behind a label. */
+.hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
+.file-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+/* Chrome draws the time picker icon in white. */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(55%) sepia(6%) saturate(500%) brightness(90%);
+  opacity: 0.7;
+}
