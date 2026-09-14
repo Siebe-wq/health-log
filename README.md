@@ -24,9 +24,10 @@ evening, a card for the night that just ended. Before mid-afternoon the night
 comes first; after that the evening does. Anything already logged collapses
 into one dim line further down, still tappable to edit.
 
-Under that is the **week score**, 0-100, and a seven day grid of sleep, PEM and
-how many items sat worse than baseline. At the bottom is how long ago you last
-downloaded a backup.
+Under that are two numbers — the **week score** (how it has been) and **room
+left** (what the next day or two are exposed to) — and a seven day grid of
+sleep, PEM, symptoms above baseline and demand above it. At the bottom is how
+long ago you last downloaded a backup.
 
 **Evening** and **Morning** are not permanent tabs. You reach them from Home,
 and the tab appears only while you are on one, so there is a way back.
@@ -130,6 +131,39 @@ What it deliberately leaves out:
 Its main limitation: every item counts the same, so a crash weighs exactly as
 much as mild constipation. If that turns out to matter, the fix is per-item
 weights in `itemBurden`.
+
+## Room left
+
+The forward-looking half, also 0-100 and also higher-is-better, so the two
+numbers on Home never have to be read in opposite directions at three in the
+morning. 100 means the last few days asked no more of you than usual.
+
+It is built only from the five demand items — physically active, mentally
+demanding, socially demanding, emotionally stressful, and pacing — the same
+five the week score leaves out. Pacing counts as demand because its scale is
+"low = better", so a high value is a day you pushed through rather than paced.
+
+The weighting is the part that makes it forward-looking. PEM is delayed,
+typically by 12 to 48 hours, and it stacks: several ordinary days in a row can
+do what no single day would. So today and yesterday carry full weight — their
+PEM is still in flight — and the two days before that taper off, because their
+effect has largely already arrived:
+
+```
+today 1 · yesterday 1 · 2 days back 0.6 · 3 days back 0.3
+```
+
+The same heavy day therefore costs about 29 points when it is today and about 9
+when it is three days back.
+
+The tile also says which situation you are in. If room is low and the last two
+days still score well, the cost has not landed yet and the next day or two are
+the exposed part. If room is low and symptoms are already down, it has landed.
+
+**These weights are a rule of thumb, not a measured curve.** There is no
+validated formula for predicting PEM from self-reported exertion. The nearest
+research idea is Leonard Jason's energy envelope work, which is correlational
+and small. Read the number as a prompt to think, not a forecast.
 
 ## Design rules, on purpose
 

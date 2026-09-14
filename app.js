@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.3.0";
+var VERSION = "v1.4.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
@@ -393,6 +393,65 @@ function dayScore(entry) {
   return b === null ? null : Math.round(100 * (1 - b));
 }
 
+/* ---------- room left: the forward-looking half ---------- */
+
+/* The five demand items, which the symptom score deliberately leaves out.
+   Here they are the whole point. All of them read higher = more demand,
+   pacing included: its label is "low = better", so a high value is a day you
+   pushed through rather than paced. */
+var LOAD_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) >= 0; });
+var MIN_LOAD_ITEMS = 3;
+
+function loadBurden(entry) {
+  if (!entry) return null;
+  var sum = 0, n = 0;
+  LOAD_ITEMS.forEach(function (it) {
+    if (!itemCounts(entry, it.key)) return;
+    var b = itemBurden(it, entry.v[it.key], state.baselines[it.key]);
+    if (b !== null) { sum += b; n++; }
+  });
+  return n < MIN_LOAD_ITEMS ? null : sum / n;
+}
+
+/* Exertion that has not landed yet.
+
+   PEM is delayed, typically by 12 to 48 hours, and it stacks: several ordinary
+   days in a row can do what no single day would. So today and yesterday carry
+   full weight — their PEM is still in flight — and the two days before that
+   taper off as their effect has largely already arrived.
+
+   These weights are a rule of thumb, not a measured curve. There is no
+   validated formula for predicting PEM from self-reported exertion; the
+   closest research idea is Jason's energy envelope, which is correlational.
+   Treat the number as a prompt to think, not a forecast. */
+var LOAD_WEIGHTS = [1, 1, 0.6, 0.3];
+
+/* Scored the same direction as the week score — higher is better, green is
+   good — so the two numbers on Home never have to be read in opposite
+   directions at three in the morning. 100 means the last few days asked no
+   more of you than usual. */
+function roomLeft(endDate) {
+  var sum = 0, weight = 0, days = 0;
+  for (var i = 0; i < LOAD_WEIGHTS.length; i++) {
+    var b = loadBurden(state.days[shiftDay(endDate, -i)]);
+    if (b === null) continue;
+    sum += LOAD_WEIGHTS[i] * b; weight += LOAD_WEIGHTS[i]; days++;
+  }
+  if (days < 2) return { room: null, days: days };
+  return { room: Math.round(100 * (1 - sum / weight)), days: days };
+}
+
+/* Has the cost already arrived, or is it still coming? */
+function symptomsHoldingUp(endDate) {
+  var scores = [];
+  for (var i = 0; i < 2; i++) {
+    var sc = dayScore(state.days[shiftDay(endDate, -i)]);
+    if (sc !== null) scores.push(sc);
+  }
+  if (scores.length === 0) return null;
+  return scores.reduce(function (a, b) { return a + b; }, 0) / scores.length >= 85;
+}
+
 /* Seven days ending at endDate, weighted by recency with a three day half
    life: today counts 1, three days back counts a half, six days back a
    quarter. Days with no entry are skipped and the weights renormalised.
@@ -478,7 +537,42 @@ function scoreTile() {
   return box;
 }
 
-/* Seven days, three rows: sleep, PEM, and how many items sat worse than
+/* What the next day or two are exposed to. */
+function roomTile() {
+  var t = today();
+  var now = roomLeft(t);
+  var box = el("div", { class: "score" });
+  box.appendChild(el("div", { class: "score-label", text: "Room left" }));
+  if (now.room === null) {
+    box.appendChild(el("div", { class: "score-wait",
+      text: "Needs 2 of the last 4 days, has " + now.days }));
+    return box;
+  }
+  var band = now.room >= 80 ? ["#6FAF87", "within your usual"]
+    : now.room >= 60 ? ["#C6CED6", "above your usual"]
+    : ["#D08A6B", "well above your usual"];
+  var head = el("div", { class: "score-head" }, [
+    el("span", { class: "score-num", text: String(now.room) }),
+    el("span", { class: "score-band", text: band[1] })
+  ]);
+  head.querySelector(".score-num").style.color = band[0];
+  box.appendChild(head);
+
+  var reading;
+  if (now.room >= 80) {
+    reading = "The last few days asked no more of you than usual.";
+  } else {
+    var holding = symptomsHoldingUp(t);
+    reading = holding === false
+      ? "It is already showing in your symptoms."
+      : "PEM usually lands 12 to 48 hours later — the next day or two are the exposed part.";
+  }
+  box.appendChild(el("div", { class: "score-cap",
+    text: reading + " · 4 days of demand and pacing, a rule of thumb" }));
+  return box;
+}
+
+/* Seven days, four rows: sleep, PEM, and how many items sat worse than
    baseline. Colour is the distance from your baseline, not the raw value, and
    every cell prints its number so the colour is never doing the work alone. */
 function weekGrid() {
@@ -486,7 +580,8 @@ function weekGrid() {
   var rows = [
     { key: "sleep", label: "Sleep" },
     { key: "pem", label: "PEM" },
-    { key: null, label: "Worse" }
+    { key: null, label: "Worse" },
+    { key: null, label: "Push", load: true }
   ];
   var grid = el("div", { class: "grid" });
   grid.appendChild(el("div", {}));                       /* corner */
@@ -505,16 +600,20 @@ function weekGrid() {
     dates.forEach(function (d) {
       var e = state.days[d];
       var text = "–", fill = VAL.none, delta = null;
-      if (e && dayBurden(e) !== null) {
+      /* Each row asks its own half of the record whether that day counts:
+         Push reads the demand items, the rest read the symptom items. */
+      var ready = e && (row.load ? loadBurden(e) !== null : dayBurden(e) !== null);
+      if (ready) {
         if (row.key === null) {
-          /* items sitting worse than baseline, in the same two red steps */
-          var worse = SCORE_ITEMS.filter(function (it) {
+          /* how many items sat above baseline, in the same two red steps:
+             symptoms for Worse, the five demand items for Push */
+          var above = (row.load ? LOAD_ITEMS : SCORE_ITEMS).filter(function (it) {
             if (!itemCounts(e, it.key)) return false;
             var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
             return b !== null && b > 0;
           }).length;
-          text = String(worse);
-          delta = worse === 0 ? 0 : worse <= 2 ? 1 : 2;
+          text = String(above);
+          delta = above === 0 ? 0 : above <= 2 ? 1 : 2;
         } else {
           var v = itemCounts(e, row.key) ? e.v[row.key] : undefined;
           if (v !== undefined) {
@@ -542,7 +641,7 @@ function weekGrid() {
   return el("div", { class: "grid-wrap" }, [
     grid,
     el("div", { class: "strip-cap",
-      text: "Green better than baseline, grey at it, red worse" })
+      text: "Worse = symptoms above baseline. Push = demand above it." })
   ]);
 }
 
@@ -618,6 +717,7 @@ function homeScreen() {
 
   wrap.appendChild(el("div", { class: "spacer" }));
   wrap.appendChild(scoreTile());
+  wrap.appendChild(roomTile());
   wrap.appendChild(weekGrid());
   done.forEach(function (c) { wrap.appendChild(c); });
   wrap.appendChild(backupLine());
