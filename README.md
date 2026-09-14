@@ -211,6 +211,25 @@ worth checking whether hours adds anything.
 It exports as `Sleep hours`. The 0-3 rating still exports as `Sleep`, the name
 your Visible history uses, even though the screen now labels it Sleep quality.
 
+## Notifications
+
+There are none, and there cannot be without changing what this app is.
+
+A web app can only be pushed to by a **server** sending the push — the phone
+subscribes, and something has to be at the other end. This app has no server
+and makes no network calls, which is the point of it.
+
+The one API that would have allowed a purely local scheduled notification,
+Notification Triggers (`showTrigger` with a `TimestampTrigger`), ran as a
+Chrome origin trial twice and was then **abandoned**. It never shipped, and
+nothing replaced it. A notification can only be raised while the page is
+actually open, which is no use as a reminder.
+
+Web Push itself does work in Firefox on Android for an installed app, so if a
+tiny server ever became acceptable it is buildable. Until then the phone's own
+alarm or a repeating calendar entry does the job, needs no code, and fires
+without a signal.
+
 ## Design rules, on purpose
 
 - Dark, low-glare. No white anywhere, no bright surfaces.

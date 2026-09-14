@@ -426,5 +426,20 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* Chart legend */
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; }
 .legend .item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
-.legend .swatch { width: 14px; height: 2px; border-radius: 1px; }
+.swatch-line { width: 16px; height: 4px; flex: none; }
 .legend .note { font-size: 12px; color: var(--dim); }
+
+.picker { margin-top: 12px; }
+.picker button { font-size: 13px; padding: 0 12px; }
+
+/* A secondary control should not look like the main action. */
+.quiet-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 13px;
+  min-height: 46px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}

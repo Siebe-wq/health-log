@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.6.0";
+var VERSION = "v1.7.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
@@ -31,11 +31,20 @@ var VAL = {
   none:  "transparent"
 };
 
-/* The two lines on the chart. Checked for colourblind separation rather than
-   guessed: worst pair ΔE 17.6 under protanopia, 20.2 under normal vision,
-   both well clear of the floor. Each line is also labelled at its end, so hue
-   is never the only thing telling them apart. */
-var SERIES = { symptoms: "#C4714C", exertion: "#6890C6" };
+/* Three line slots, assigned in this fixed order and never cycled.
+
+   Three is the cap because of what the numbers say, not taste: at this
+   lightness these three are ΔE 6.2 apart under protanopia — inside the floor
+   band, which is only legal alongside a second channel that is not colour. So
+   each slot also owns a dash pattern, and every point carries a dot. A fourth
+   hue muted enough for this screen collapses into one of these (a purple I
+   tried sat ΔE 0.5 from the blue under deuteranopia — indistinguishable). */
+var SLOTS = [
+  { colour: "#C4714C", dash: "" },
+  { colour: "#8FB6E0", dash: "6 3" },
+  { colour: "#3E7F72", dash: "1.5 3" }
+];
+var MAX_LINES = SLOTS.length;
 
 /* Whichever of the two text colours actually reads on each fill. */
 var INK = {
@@ -196,7 +205,8 @@ var state = {
   mornDate: shiftDay(today(), -1),
   storeOk: true,
   storeMsg: "",
-  lastBackupAt: null
+  lastBackupAt: null,
+  chartKeys: ["symptoms", "exertion"]
 };
 
 function loadStore() {
@@ -207,6 +217,7 @@ function loadStore() {
     state.days = parsed.days || {};
     state.baselines = Object.assign({}, DEFAULT_BASELINES, parsed.baselines || {});
     state.lastBackupAt = parsed.lastBackupAt || null;
+    if (parsed.chartKeys && parsed.chartKeys.length) state.chartKeys = parsed.chartKeys;
   } catch (e) {
     state.storeOk = false;
     state.storeMsg = "read: " + (e && e.message ? e.message : String(e));
@@ -219,7 +230,7 @@ function saveNow() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
       version: STORE_VERSION, days: state.days, baselines: state.baselines,
-      lastBackupAt: state.lastBackupAt
+      lastBackupAt: state.lastBackupAt, chartKeys: state.chartKeys
     }));
     if (!state.storeOk) { state.storeOk = true; state.storeMsg = ""; renderBanner(); }
     flash("Saved");
@@ -610,151 +621,235 @@ function pemTile() {
   return box;
 }
 
-/* Fourteen days of the two things that move against each other: what you spent
-   and what it cost. Both run 0-100 up-is-worse so the lead and the lag are
-   readable as shapes. Tap anywhere to read a day off; tap the readout to open
-   it.
+/* Fourteen days of whichever lines you pick, everything scaled to 0-100 with
+   up meaning worse, so lines built different ways can still share one axis.
+   Symptoms and Exertion are the same loads the two scores are built from. A
+   single item is drawn as its share of its own scale, and the readout gives
+   you back the number you actually entered.
 
-   Missing days break the line rather than being drawn through — a straight
-   segment across a gap would invent days you never logged. */
+   Every logged day carries a dot, so a gap in entry is visible as a gap rather
+   than having to be inferred from the line. Missing days break the line rather
+   than being drawn through — a straight segment across a gap would invent days
+   you never logged. */
 var CHART_DAYS = 14;
-var chartPick = null;     /* index of the day being read, or null */
+var chartPick = null;        /* index of the day being read, or null */
+var pickerOpen = false;
 
-function chartSeries() {
-  var t = today();
-  var out = [];
-  for (var i = CHART_DAYS - 1; i >= 0; i--) {
-    var d = shiftDay(t, -i);
-    var e = state.days[d];
-    var sym = e ? dayBurden(e) : null;
-    var ex = e ? loadBurden(e) : null;
-    out.push({
-      date: d,
-      symptoms: sym === null ? null : Math.round(100 * sym),
-      exertion: ex === null ? null : Math.round(100 * ex)
+function shortLabel(label) {
+  return label.split(" / ")[0].split(" (")[0];
+}
+
+function seriesDefs() {
+  var defs = [
+    { key: "symptoms", label: "Symptoms",
+      value: function (e) { var b = dayBurden(e); return b === null ? null : Math.round(100 * b); } },
+    { key: "exertion", label: "Exertion",
+      value: function (e) { var b = loadBurden(e); return b === null ? null : Math.round(100 * b); } }
+  ];
+  ALL_ITEMS.forEach(function (it) {
+    var max = it.max === undefined ? 3 : it.max;
+    defs.push({
+      key: "i:" + it.key, label: shortLabel(it.label), item: it,
+      value: function (e) {
+        if (!itemCounts(e, it.key)) return null;
+        var v = e.v[it.key];
+        if (v === undefined) return null;
+        /* share of the item's own scale, in the direction that is worse */
+        return Math.round(100 * (it.higherIsBetter ? (max - v) / max : v / max));
+      },
+      raw: function (e) {
+        if (!itemCounts(e, it.key)) return null;
+        return e.v[it.key] === undefined ? null : e.v[it.key];
+      }
     });
-  }
-  return out;
+  });
+  return defs;
+}
+
+function activeSeries() {
+  var defs = seriesDefs();
+  var out = [];
+  (state.chartKeys || []).forEach(function (k) {
+    for (var i = 0; i < defs.length; i++) if (defs[i].key === k) { out.push(defs[i]); return; }
+  });
+  return out.slice(0, MAX_LINES);
 }
 
 function chart() {
-  var rows = chartSeries();
-  var has = rows.some(function (r) { return r.symptoms !== null || r.exertion !== null; });
-  var wrap = el("div", { class: "chart-wrap" });
-  if (!has) {
-    wrap.appendChild(el("div", { class: "hint", text: "The chart fills in as days are logged." }));
-    return wrap;
-  }
+  var host = el("div", { class: "chart-wrap" });
 
-  var W = 320, H = 116, padL = 6, padR = 6, padT = 8, padB = 14;
-  var plotW = W - padL - padR, plotH = H - padT - padB;
-  var x = function (i) { return padL + (plotW * i) / (CHART_DAYS - 1); };
-  var y = function (v) { return padT + plotH * (1 - v / 100); };
+  function paint() {
+    host.innerHTML = "";
+    var picked = activeSeries();
+    var t = today();
+    var dates = [];
+    for (var i = CHART_DAYS - 1; i >= 0; i--) dates.push(shiftDay(t, -i));
 
-  var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-  svg.setAttribute("class", "chart");
-  svg.setAttribute("role", "img");
-  function node(name, attrs) {
-    var n = document.createElementNS("http://www.w3.org/2000/svg", name);
-    Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
-    return n;
-  }
+    var data = picked.map(function (def) {
+      return dates.map(function (d) {
+        var e = state.days[d];
+        return e ? def.value(e) : null;
+      });
+    });
 
-  /* recessive guides: the midline and the floor */
-  [0, 50, 100].forEach(function (v) {
-    svg.appendChild(node("line", { x1: padL, x2: padL + plotW, y1: y(v), y2: y(v),
-      stroke: "#252D36", "stroke-width": v === 0 ? 1 : 0.5 }));
-  });
+    var W = 320, H = 116, padL = 6, padR = 6, padT = 10, padB = 10;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var x = function (i) { return padL + (plotW * i) / (CHART_DAYS - 1); };
+    var y = function (v) { return padT + plotH * (1 - v / 100); };
 
-  /* one path per unbroken run, so gaps stay gaps */
-  ["exertion", "symptoms"].forEach(function (key) {
-    var run = [];
-    function flush() {
-      if (run.length === 1) {
-        svg.appendChild(node("circle", { cx: run[0][0], cy: run[0][1], r: 2, fill: SERIES[key] }));
-      } else if (run.length > 1) {
-        svg.appendChild(node("path", {
-          d: "M" + run.map(function (p) { return p[0] + " " + p[1]; }).join("L"),
-          fill: "none", stroke: SERIES[key], "stroke-width": 2,
-          "stroke-linecap": "round", "stroke-linejoin": "round"
-        }));
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("class", "chart");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", picked.length
+      ? picked.map(function (p) { return p.label; }).join(" and ") + " over 14 days"
+      : "No lines chosen");
+    function node(name, attrs) {
+      var n = document.createElementNS("http://www.w3.org/2000/svg", name);
+      Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+      return n;
+    }
+
+    [0, 50, 100].forEach(function (v) {
+      svg.appendChild(node("line", { x1: padL, x2: padL + plotW, y1: y(v), y2: y(v),
+        stroke: "#252D36", "stroke-width": v === 0 ? 1 : 0.5 }));
+    });
+
+    picked.forEach(function (def, si) {
+      var slot = SLOTS[si];
+      var vals = data[si];
+      var run = [];
+      function flush() {
+        if (run.length > 1) {
+          svg.appendChild(node("path", {
+            d: "M" + run.map(function (p) { return p[0] + " " + p[1]; }).join("L"),
+            fill: "none", stroke: slot.colour, "stroke-width": 2,
+            "stroke-dasharray": slot.dash, "stroke-linecap": "round", "stroke-linejoin": "round"
+          }));
+        }
+        run = [];
       }
-      run = [];
+      vals.forEach(function (v, i) {
+        if (v === null) { flush(); return; }
+        run.push([x(i), y(v)]);
+      });
+      flush();
+      /* a dot on every logged day, ringed so overlapping points stay readable */
+      vals.forEach(function (v, i) {
+        if (v === null) return;
+        svg.appendChild(node("circle", { cx: x(i), cy: y(v), r: 3,
+          fill: slot.colour, stroke: "#171C22", "stroke-width": 1.2 }));
+      });
+    });
+
+    var marker = node("g", {});
+    svg.appendChild(marker);
+    function paintPick() {
+      marker.innerHTML = "";
+      if (chartPick === null) return;
+      marker.appendChild(node("line", { x1: x(chartPick), x2: x(chartPick), y1: padT, y2: padT + plotH,
+        stroke: "#77828E", "stroke-width": 1 }));
+      picked.forEach(function (def, si) {
+        var v = data[si][chartPick];
+        if (v === null) return;
+        marker.appendChild(node("circle", { cx: x(chartPick), cy: y(v), r: 5,
+          fill: SLOTS[si].colour, stroke: "#0F1216", "stroke-width": 2 }));
+      });
     }
-    rows.forEach(function (r, i) {
-      if (r[key] === null) { flush(); return; }
-      run.push([x(i), y(r[key])]);
-    });
-    flush();
 
-  });
-
-  var marker = node("g", {});
-  svg.appendChild(marker);
-
-  function paintPick() {
-    marker.innerHTML = "";
-    if (chartPick === null) return;
-    var r = rows[chartPick];
-    marker.appendChild(node("line", { x1: x(chartPick), x2: x(chartPick), y1: padT, y2: padT + plotH,
-      stroke: "#77828E", "stroke-width": 1 }));
-    ["exertion", "symptoms"].forEach(function (key) {
-      if (r[key] === null) return;
-      marker.appendChild(node("circle", { cx: x(chartPick), cy: y(r[key]), r: 4,
-        fill: SERIES[key], stroke: "#0F1216", "stroke-width": 2 }));
-    });
-  }
-
-  /* one hit target per day, the full height of the plot */
-  rows.forEach(function (r, i) {
     var half = plotW / (CHART_DAYS - 1) / 2;
-    var hit = node("rect", { x: x(i) - half, y: 0, width: half * 2, height: H,
-      fill: "transparent", style: "cursor:pointer" });
-    hit.addEventListener("pointerdown", function () {
-      chartPick = chartPick === i ? null : i;
-      paintPick(); paintReadout();
+    dates.forEach(function (d, i) {
+      var hit = node("rect", { x: x(i) - half, y: 0, width: half * 2, height: H,
+        fill: "transparent", style: "cursor:pointer" });
+      hit.addEventListener("pointerdown", function () {
+        chartPick = chartPick === i ? null : i;
+        paintPick(); paintReadout();
+      });
+      svg.appendChild(hit);
     });
-    svg.appendChild(hit);
-  });
+    host.appendChild(svg);
 
-  wrap.appendChild(svg);
+    /* legend: swatch carries the dash pattern, not just the hue */
+    var legend = el("div", { class: "legend" });
+    picked.forEach(function (def, si) {
+      var sw = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      sw.setAttribute("viewBox", "0 0 16 4");
+      sw.setAttribute("class", "swatch-line");
+      sw.appendChild(node("line", { x1: 0, y1: 2, x2: 16, y2: 2, stroke: SLOTS[si].colour,
+        "stroke-width": 2, "stroke-dasharray": SLOTS[si].dash, "stroke-linecap": "round" }));
+      var item = el("span", { class: "item" }, [el("span", { text: def.label })]);
+      item.insertBefore(sw, item.firstChild);
+      legend.appendChild(item);
+    });
+    legend.appendChild(el("span", { class: "note", text: "0-100, up is worse" }));
+    host.appendChild(legend);
 
-  function swatch(colour, label) {
-    var sw = el("span", { class: "swatch" });
-    sw.style.background = colour;
-    return el("span", { class: "item" }, [sw, el("span", { text: label })]);
-  }
-  wrap.appendChild(el("div", { class: "legend" }, [
-    swatch(SERIES.symptoms, "Symptoms"),
-    swatch(SERIES.exertion, "Exertion"),
-    el("span", { class: "note", text: "0-100, up is worse" })
-  ]));
-
-  var readout = el("div", { class: "readout" });
-  function paintReadout() {
-    readout.innerHTML = "";
-    if (chartPick === null) {
-      readout.appendChild(el("span", { class: "readout-hint",
-        text: "Tap any day to read it off" }));
-      return;
+    var readout = el("div", { class: "readout" });
+    function paintReadout() {
+      readout.innerHTML = "";
+      if (chartPick === null) {
+        readout.appendChild(el("span", { class: "readout-hint",
+          text: picked.length ? "Tap any day to read it off" : "Pick a line below" }));
+        return;
+      }
+      var d = dates[chartPick];
+      var e = state.days[d];
+      var open = el("button", { class: "readout-open", type: "button",
+        onclick: function () { openEvening(d); } }, [
+        el("span", { text: pretty(d) })
+      ]);
+      picked.forEach(function (def, si) {
+        var shown = e && def.raw ? def.raw(e) : data[si][chartPick];
+        var span = el("span", { class: "key",
+          text: def.label + " " + (shown === null || shown === undefined ? "–" : shown) });
+        span.style.color = SLOTS[si].colour;
+        open.appendChild(span);
+      });
+      open.appendChild(el("span", { class: "readout-go", text: "open" }));
+      readout.appendChild(open);
     }
-    var r = rows[chartPick];
-    var open = el("button", { class: "readout-open", type: "button",
-      onclick: function () { openEvening(r.date); } }, [
-      el("span", { text: pretty(r.date) }),
-      el("span", { class: "key sym", text: "sym " + (r.symptoms === null ? "–" : r.symptoms) }),
-      el("span", { class: "key exe", text: "exe " + (r.exertion === null ? "–" : r.exertion) }),
-      el("span", { class: "readout-go", text: "open" })
-    ]);
-    open.querySelector(".sym").style.color = SERIES.symptoms;
-    open.querySelector(".exe").style.color = SERIES.exertion;
-    readout.appendChild(open);
+    paintPick();
+    paintReadout();
+    host.appendChild(readout);
+
+    /* line picker */
+    var msg = el("div", { class: "msg", style: { display: "none" } });
+    var toggle = el("button", { class: "quiet-btn", type: "button",
+      text: pickerOpen ? "Done choosing lines" : "Change lines",
+      onclick: function () { pickerOpen = !pickerOpen; paint(); } });
+    host.appendChild(toggle);
+
+    if (pickerOpen) {
+      var chips = el("div", { class: "tags picker" });
+      seriesDefs().forEach(function (def) {
+        var on = (state.chartKeys || []).indexOf(def.key) >= 0;
+        chips.appendChild(el("button", {
+          type: "button", text: def.label, "aria-pressed": on ? "true" : "false",
+          onclick: function () {
+            var keys = (state.chartKeys || []).slice();
+            var at = keys.indexOf(def.key);
+            if (at >= 0) {
+              keys.splice(at, 1);
+            } else if (keys.length >= MAX_LINES) {
+              msg.textContent = "Three lines at a time — past that the colours stop being reliably different.";
+              msg.style.display = "";
+              return;
+            } else {
+              keys.push(def.key);
+            }
+            state.chartKeys = keys;
+            saveNow();
+            paint();
+          }
+        }));
+      });
+      host.appendChild(chips);
+      host.appendChild(msg);
+    }
   }
-  paintPick();
-  paintReadout();
-  wrap.appendChild(readout);
-  return wrap;
+
+  paint();
+  return host;
 }
 
 /* Seven days, four rows: sleep, PEM, and how many items sat worse than
