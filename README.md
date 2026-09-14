@@ -3,8 +3,8 @@
 A daily symptom log for one person, one phone. No build step, no server, no
 accounts, no network calls. Everything lives in the browser on the device.
 
-Open it, and the last evening's screen is already filled in at baseline. A day
-where nothing is off baseline takes three taps: open, **Save day**, done.
+Open it and the Home screen says what is still to log. A day where nothing is
+off baseline takes one tap: **Nothing off baseline — save it**.
 
 ## Files
 
@@ -17,13 +17,30 @@ where nothing is off baseline takes three taps: open, **Save day**, done.
 | `sw.js` | Service worker. Caches the app so it opens offline. |
 | `icons/` | Home screen icons. |
 
+## The screens
+
+**Home** is a dashboard. It shows only what still needs logging: a card for the
+evening, a card for the night that just ended. Before mid-afternoon the night
+comes first; after that the evening does. Anything already logged collapses
+into one dim line further down, still tappable to edit. Underneath is a strip
+of the last seven days, one column each, height being how many items were off
+baseline, and crash days in the warning colour. At the bottom is how long ago
+you last downloaded a backup.
+
+**Evening** and **Morning** are not permanent tabs. You reach them from Home,
+and the tab appears only while you are on one, so there is a way back.
+
+**History** is the full list of days, plus the backup buttons.
+
+**Baseline** is your normal value for each of the 21 items.
+
 ## Putting it on the phone
 
 1. In GitHub, go to **Settings → Pages**.
 2. Under *Build and deployment*, set **Source** to *Deploy from a branch*,
    pick the branch this code is on, folder `/ (root)`, and press Save.
 3. Wait a minute, then open the URL Pages gives you in Chrome on the phone.
-4. Chrome menu → **Add to Home screen**.
+4. Browser menu → **Add to Home screen** (works in Firefox and Chrome).
 5. Open it from the home screen icon once while online, so the service worker
    can cache everything. After that it opens with no signal.
 
@@ -66,8 +83,20 @@ Edit the files and push. Two things must be bumped together on every change:
 If `CACHE` is not bumped, the phone keeps serving the old build from its cache
 and the version number in the corner will tell you so.
 
-A new build does not replace a running one mid-entry. It waits until every tab
-is closed, or until you tap **new build ready · load it** in the corner.
+### How a new build reaches the phone
+
+GitHub Pages takes about a minute to publish after a push. After that:
+
+- Open the app with a connection. It loads instantly from cache, checks for a
+  new build in the background, and if you have not touched anything yet it
+  swaps itself in and reloads on its own. That takes a few seconds. The version
+  number in the corner is how you confirm it happened.
+- If you are already entering a day, nothing moves. A line appears in the
+  corner — **new build ready · load it** — and it waits for you.
+- Opened with no signal, it stays on the build it has. It updates the next time
+  you open it online.
+
+So: yes, it updates itself, but only when opened online, and never mid-entry.
 
 ## Design rules, on purpose
 
@@ -75,8 +104,8 @@ is closed, or until you tap **new build ready · load it** in the corner.
 - Touch targets at least 46px.
 - No animation, no transitions, no confirmation dialogs.
 - One scrolling column, 460px max, system font.
-- A dot after a label means that value is off baseline. A dashed outline in a
-  row marks where the baseline sits.
+- A dot after a label means that value is off baseline. The dashed outline in
+  a row marks the baseline, whether or not it is the value you picked.
 
 ## Not in this version
 

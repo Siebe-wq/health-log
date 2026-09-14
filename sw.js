@@ -1,6 +1,6 @@
 /* Offline shell. Bump CACHE whenever any file changes — it must match the
    VERSION string in app.js, otherwise the phone keeps serving the old build. */
-var CACHE = "daily-log-v1.0.0";
+var CACHE = "daily-log-v1.1.0";
 var ASSETS = [
   "./",
   "./index.html",
@@ -12,8 +12,12 @@ var ASSETS = [
   "./icons/icon-maskable-512.png"
 ];
 
+/* cache: "reload" so a new build is fetched from the server, not from
+   Firefox's own HTTP cache, which would quietly install the old files again. */
 self.addEventListener("install", function (e) {
-  e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }));
+  e.waitUntil(caches.open(CACHE).then(function (c) {
+    return c.addAll(ASSETS.map(function (u) { return new Request(u, { cache: "reload" }); }));
+  }));
 });
 
 self.addEventListener("activate", function (e) {

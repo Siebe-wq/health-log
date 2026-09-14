@@ -121,9 +121,8 @@ button, input, textarea, select {
   font-size: 15px;
   padding: 0 2px;
 }
-.opts button[data-baseline="1"][aria-pressed="false"] {
-  border: 1px dashed var(--dim);
-}
+/* The baseline is dashed whether or not it is the value you picked. */
+.opts button[data-baseline="1"] { border-style: dashed; }
 .opts button[aria-pressed="true"] { color: var(--text); }
 .opts button[aria-pressed="true"][data-dark="1"] { color: var(--on-fill); }
 
@@ -259,3 +258,95 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(55%) sepia(6%) saturate(500%) brightness(90%);
   opacity: 0.7;
 }
+
+/* ---- Home ---- */
+.home-head {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+.home-head .sub { color: var(--dim); }
+
+.card {
+  width: 100%;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  text-align: left;
+  color: var(--text);
+}
+.card.due { border-color: var(--accent); }
+.card-main {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 16px;
+  min-height: 72px;
+}
+.card-title { font-size: 17px; margin-bottom: 4px; }
+.card-sub { font-size: 14px; color: var(--dim); }
+.card-quick {
+  display: block;
+  width: 100%;
+  min-height: 46px;
+  background: var(--surface-up);
+  border: none;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 7px 7px;
+  color: var(--text);
+  font-size: 14px;
+}
+.card.done {
+  padding: 12px;
+  min-height: 46px;
+  color: var(--dim);
+  font-size: 14px;
+}
+.card.done .line { display: flex; justify-content: space-between; gap: 8px; }
+.card.done .meta { color: var(--dim); }
+
+/* Seven day strip */
+.strip { display: flex; gap: 6px; margin-bottom: 6px; }
+.strip button {
+  flex: 1;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.strip button[data-today="1"] { border-color: var(--dim); }
+/* A day with no entry at all is an empty dashed column. */
+.strip button[data-empty="1"] { border-style: dashed; }
+.strip .bar { width: 100%; border-radius: 2px; }
+.strip .d { font-size: 11px; color: var(--dim); }
+.strip-cap { font-size: 13px; color: var(--dim); margin-bottom: 20px; }
+
+.note-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.note-card-head { font-size: 13px; color: var(--dim); margin-bottom: 6px; }
+.note-card-body { font-size: 15px; white-space: pre-wrap; }
+
+.backup {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 13px;
+  min-height: 46px;
+  padding: 0;
+}
+.backup.stale { color: var(--warn); }

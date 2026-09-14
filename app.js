@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.0.0";
+var VERSION = "v1.1.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
@@ -127,11 +127,12 @@ function relativeWord(dateStr) {
 var state = {
   days: {},
   baselines: Object.assign({}, DEFAULT_BASELINES),
-  tab: "evening",
+  tab: "home",
   eveDate: today(),
   mornDate: shiftDay(today(), -1),
   storeOk: true,
-  storeMsg: ""
+  storeMsg: "",
+  lastBackupAt: null
 };
 
 function loadStore() {
@@ -141,6 +142,7 @@ function loadStore() {
     var parsed = JSON.parse(raw);
     state.days = parsed.days || {};
     state.baselines = Object.assign({}, DEFAULT_BASELINES, parsed.baselines || {});
+    state.lastBackupAt = parsed.lastBackupAt || null;
   } catch (e) {
     state.storeOk = false;
     state.storeMsg = "read: " + (e && e.message ? e.message : String(e));
@@ -152,7 +154,8 @@ function saveNow() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
-      version: STORE_VERSION, days: state.days, baselines: state.baselines
+      version: STORE_VERSION, days: state.days, baselines: state.baselines,
+      lastBackupAt: state.lastBackupAt
     }));
     if (!state.storeOk) { state.storeOk = true; state.storeMsg = ""; renderBanner(); }
     flash("Saved");
@@ -183,7 +186,7 @@ function emptyEntry(date) {
   return {
     date: date, v: Object.assign({}, state.baselines), touched: {},
     lastBite: "", stomach: "", tags: [], note: "", nightNote: "",
-    complete: false, savedAt: null, updatedAt: null
+    complete: false, morningDone: false, savedAt: null, updatedAt: null
   };
 }
 /* Read-only view of a day. Days that do not exist yet read as baseline. */
@@ -255,11 +258,17 @@ function ratingRow(item, getValue, setValue, baselineOf, onAfter) {
     var base = baselineOf ? baselineOf() : undefined;
     buttons.forEach(function (b, n) {
       var on = value === n;
+      var isBase = base === n;
       b.setAttribute("aria-pressed", on ? "true" : "false");
-      b.setAttribute("data-baseline", base === n ? "1" : "0");
+      b.setAttribute("data-baseline", isBase ? "1" : "0");
       b.setAttribute("data-dark", n >= 2 ? "1" : "0");
       b.style.background = on ? ramp[Math.min(n, ramp.length - 1)] : "";
-      b.style.borderColor = on ? ramp[Math.min(n, ramp.length - 1)] : "";
+      /* The baseline keeps its dashed outline even while it is the value you
+         picked, so normal is always visible. On a filled button the dash is
+         drawn in that button's own text colour. */
+      b.style.borderColor = isBase
+        ? (on ? (n >= 2 ? "#14181C" : "var(--text)") : "var(--dim)")
+        : (on ? ramp[Math.min(n, ramp.length - 1)] : "");
     });
     var off = base !== undefined && value !== undefined && value !== base;
     dot.style.display = off ? "" : "none";
@@ -281,6 +290,160 @@ function dateNav(getDate, setDate, caption) {
     el("button", { type: "button", "aria-label": "Next day", text: "›",
       onclick: function () { setDate(shiftDay(getDate(), 1)); } })
   ]);
+}
+
+/* ---------- home ---------- */
+
+/* The night that just ended is logged under yesterday's date. */
+function nightIsLogged(entry) {
+  if (!entry) return false;
+  if (entry.morningDone) return true;
+  return !!(entry.touched.sleep || entry.touched.episode || entry.touched.syncope);
+}
+
+function openEvening(date) {
+  state.eveDate = date; eveDateManual = true; state.tab = "evening"; render();
+}
+function openMorning(date) {
+  state.mornDate = date; mornDateManual = true; state.tab = "morning"; render();
+}
+
+/* A job still to do: full size, accent edge. */
+function dueCard(title, sub, onclick, extra) {
+  return el("div", { class: "card due" }, [
+    el("button", { class: "card-main", type: "button", onclick: onclick }, [
+      el("div", { class: "card-title", text: title }),
+      el("div", { class: "card-sub", text: sub })
+    ])
+  ].concat(extra ? [extra] : []));
+}
+
+/* Done for the day: one dim line, out of the way but still editable. */
+function doneLine(text, onclick) {
+  return el("button", { class: "card done", type: "button", onclick: onclick }, [
+    el("div", { class: "line" }, [
+      el("span", { text: text }),
+      el("span", { class: "meta", text: "edit" })
+    ])
+  ]);
+}
+
+/* Last seven days, one column each: how many items were off baseline.
+   A crash day is drawn in the warning colour. Tap a column to open that day. */
+function weekStrip() {
+  var t = today();
+  var cols = [];
+  var max = 4;
+  for (var i = 6; i >= 0; i--) {
+    var d = shiftDay(t, -i);
+    var e = state.days[d];
+    var count = e ? offBaselineKeys(e, ALL_KEYS).length : null;
+    if (count !== null && count > max) max = count;
+    cols.push({ date: d, entry: e, count: count });
+  }
+  var strip = el("div", { class: "strip" });
+  cols.forEach(function (c) {
+    var bar = el("div", { class: "bar" });
+    if (c.count === null) {
+      bar.style.height = "0";
+    } else {
+      bar.style.height = (5 + Math.round(33 * c.count / max)) + "px";
+      var share = c.count / max;
+      bar.style.background = c.entry.v.crash ? "var(--warn)"
+        : RAMP4[c.count === 0 ? 0 : share <= 0.34 ? 1 : share <= 0.67 ? 2 : 3];
+    }
+    var p = c.date.split("-").map(Number);
+    strip.appendChild(el("button", {
+      type: "button", "data-today": c.date === t ? "1" : "0",
+      "data-empty": c.count === null ? "1" : "0",
+      "aria-label": pretty(c.date) + (c.count === null ? ", no entry" : ", " + c.count + " off baseline"),
+      onclick: function () { openEvening(c.date); }
+    }, [
+      bar,
+      el("div", { class: "d", text: DAY_NAMES[new Date(p[0], p[1] - 1, p[2]).getDay()].charAt(0) })
+    ]));
+  });
+  return el("div", {}, [
+    strip,
+    el("div", { class: "strip-cap", text: "Last 7 days — items off baseline, crash days in red" })
+  ]);
+}
+
+function backupLine() {
+  var last = state.lastBackupAt;
+  var text, stale;
+  if (!last) {
+    text = "No backup yet — download the JSON in History";
+    stale = true;
+  } else {
+    var days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+    text = "Backed up " + (days === 0 ? "today" : days === 1 ? "yesterday" : days + " days ago");
+    stale = days >= 14;
+    if (stale) text += " — worth doing again";
+  }
+  return el("button", { class: "backup" + (stale ? " stale" : ""), type: "button", text: text,
+    onclick: function () { state.tab = "history"; render(); } });
+}
+
+function homeScreen() {
+  var t = today();
+  var y = shiftDay(t, -1);
+  var eve = state.days[t];
+  var eveDone = !!(eve && eve.complete);
+  var night = state.days[y];
+  var nightDone = nightIsLogged(night);
+  var wrap = el("div");
+  var due = [], done = [];
+
+  wrap.appendChild(el("div", { class: "home-head" }, [
+    el("span", { text: pretty(t) }),
+    el("span", { class: "sub", text: eveDone && nightDone ? " · all logged" : "" })
+  ]));
+
+  /* Evening */
+  if (eveDone) {
+    done.push(doneLine("Evening logged · " + offBaselineKeys(eve, EVENING_KEYS).length + " off baseline",
+      function () { openEvening(t); }));
+  } else if (eve) {
+    due.push(dueCard("Finish the evening",
+      "Draft · " + offBaselineKeys(eve, EVENING_KEYS).length + " off baseline",
+      function () { openEvening(t); }));
+  } else {
+    due.push(dueCard("Evening", "How today went", function () { openEvening(t); },
+      el("button", { class: "card-quick", type: "button", text: "Nothing off baseline — save it",
+        onclick: function () {
+          update(t, function (e) { e.complete = true; e.savedAt = new Date().toISOString(); });
+          saveNow(); render(); flash("Day saved");
+        }})));
+  }
+
+  /* Morning — the night that just ended */
+  var nightSub = "Night of " + pretty(y) + " → " + pretty(t);
+  if (nightDone) {
+    var n = state.days[y];
+    done.push(doneLine("Night logged · sleep " + n.v.sleep +
+      (n.v.episode ? " · ep " + n.v.episode : ""), function () { openMorning(y); }));
+  } else {
+    due.push(dueCard("Morning", nightSub, function () { openMorning(y); }));
+  }
+
+  /* Before mid-afternoon the night comes first. */
+  if (new Date().getHours() < 15) due.reverse();
+  due.forEach(function (c) { wrap.appendChild(c); });
+
+  /* The note written for yourself last night. */
+  if (night && night.nightNote && !nightDone) {
+    wrap.appendChild(el("div", { class: "note-card" }, [
+      el("div", { class: "note-card-head", text: "You wrote this last night" }),
+      el("div", { class: "note-card-body", text: night.nightNote })
+    ]));
+  }
+
+  wrap.appendChild(el("div", { class: "spacer" }));
+  wrap.appendChild(weekStrip());
+  done.forEach(function (c) { wrap.appendChild(c); });
+  wrap.appendChild(backupLine());
+  return wrap;
 }
 
 /* ---------- evening ---------- */
@@ -420,7 +583,7 @@ function eveningScreen() {
         e.savedAt = new Date().toISOString();
       });
       saveNow();
-      state.tab = "history";
+      state.tab = "home";
       render();
       flash("Day saved");
     }
@@ -470,7 +633,10 @@ function morningScreen() {
   wrap.appendChild(section("Note for this night", [nightNote]));
 
   wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
-    onclick: function () { saveNow(); state.tab = "history"; render(); } }));
+    onclick: function () {
+      update(date, function (e) { e.morningDone = true; });
+      saveNow(); state.tab = "home"; render();
+    }}));
   return wrap;
 }
 
@@ -488,7 +654,7 @@ function baselineScreen() {
     wrap.appendChild(row.el);
   });
   wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
-    onclick: function () { state.tab = "evening"; render(); } }));
+    onclick: function () { state.tab = "home"; render(); } }));
   wrap.appendChild(el("div", { class: "note-line",
     text: "Each tap applies straight away. Done just takes you back." }));
   return wrap;
@@ -622,8 +788,13 @@ function historyScreen() {
   wrap.appendChild(section("Backup", [
     el("div", { class: "pair" }, [
       el("button", { class: "btn raised", type: "button", text: "Download JSON", onclick: function () {
-        say(download("daily-log-" + today() + ".json", backupJson(), "application/json")
-          ? "JSON file downloaded." : "Download failed — use Copy JSON below.");
+        if (download("daily-log-" + today() + ".json", backupJson(), "application/json")) {
+          state.lastBackupAt = new Date().toISOString();
+          saveNow();
+          say("JSON file downloaded.");
+        } else {
+          say("Download failed — use Copy JSON below.");
+        }
       }}),
       el("button", { class: "btn raised", type: "button", text: "Download CSV", onclick: function () {
         say(download("daily-log-" + today() + ".csv", backupCsv(), "text/csv")
@@ -655,12 +826,17 @@ function historyScreen() {
 
 /* ---------- shell ---------- */
 
-var TABS = [["evening", "Evening"], ["morning", "Morning"], ["history", "History"], ["baseline", "Baseline"]];
+/* Evening and Morning are not permanent tabs. You reach them from Home, and
+   the tab only appears while you are on one, so there is a way back. */
+var TABS = [["home", "Home"], ["history", "History"], ["baseline", "Baseline"]];
 
 function renderTabs() {
   var nav = document.getElementById("tabs");
   nav.innerHTML = "";
-  TABS.forEach(function (t) {
+  var tabs = TABS.slice();
+  if (state.tab === "evening") tabs.splice(1, 0, ["evening", "Evening"]);
+  if (state.tab === "morning") tabs.splice(1, 0, ["morning", "Morning"]);
+  tabs.forEach(function (t) {
     nav.appendChild(el("button", {
       type: "button", role: "tab", text: t[1],
       "aria-selected": state.tab === t[0] ? "true" : "false",
@@ -684,7 +860,8 @@ function render() {
   renderBanner();
   var main = document.getElementById("screen");
   main.innerHTML = "";
-  if (state.tab === "evening") main.appendChild(eveningScreen());
+  if (state.tab === "home") main.appendChild(homeScreen());
+  else if (state.tab === "evening") main.appendChild(eveningScreen());
   else if (state.tab === "morning") main.appendChild(morningScreen());
   else if (state.tab === "baseline") main.appendChild(baselineScreen());
   else main.appendChild(historyScreen());
@@ -693,6 +870,7 @@ function render() {
 
 /* ---------- start ---------- */
 
+var startedAt = Date.now();
 loadStore();
 document.getElementById("version").textContent = VERSION;
 render();
@@ -712,35 +890,59 @@ document.addEventListener("visibilitychange", function () {
 });
 window.addEventListener("pagehide", function () { saveNow(); });
 
-/* Service worker: offline shell. A new build waits until every tab is closed,
-   or until the line in the corner is tapped. */
+/* Service worker: offline shell and updates.
+
+   A new build installs in the background whenever the app is opened with a
+   connection. If you have not touched anything yet, it swaps itself in and
+   reloads on its own within a few seconds of opening. If you are already
+   entering a day, it waits and offers a tap in the corner instead, so nothing
+   moves under your thumb. */
+var touchedThisSession = false;
+document.addEventListener("pointerdown", function () { touchedThisSession = true; }, true);
+
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (reg) {
     function watch(worker) {
       if (!worker) return;
       worker.addEventListener("statechange", function () {
-        if (worker.state === "installed" && navigator.serviceWorker.controller) showUpdate(reg);
+        if (worker.state === "installed" && navigator.serviceWorker.controller) offerUpdate(reg);
       });
     }
-    if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg);
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg);
     watch(reg.installing);
     reg.addEventListener("updatefound", function () { watch(reg.installing); });
+    /* Firefox only re-checks on its own once a day. */
+    setTimeout(function () { reg.update().catch(function () {}); }, 3000);
   }).catch(function () { /* offline install is best-effort */ });
 
   var reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", function () {
     if (reloading) return;
+    /* Another window may have swapped the build in. Don't yank this one out
+       from under a half-entered day. */
+    if (touchedThisSession) { updateButton(null); return; }
     reloading = true;
     location.reload();
   });
 }
 
-function showUpdate(reg) {
-  var foot = document.querySelector(".foot");
+function offerUpdate(reg) {
+  if (!touchedThisSession && Date.now() - startedAt < 20000) {
+    saveNow();
+    if (reg.waiting) reg.waiting.postMessage("skip-waiting");
+    return;
+  }
+  updateButton(reg);
+}
+
+function updateButton(reg) {
   if (document.getElementById("update-btn")) return;
-  foot.insertBefore(el("button", { id: "update-btn", type: "button", text: "new build ready · load it",
-    onclick: function () {
-      saveNow();
-      if (reg.waiting) reg.waiting.postMessage("skip-waiting");
-    }}), document.getElementById("status"));
+  document.querySelector(".foot").insertBefore(
+    el("button", { id: "update-btn", type: "button", text: "new build ready · load it",
+      onclick: function () {
+        saveNow();
+        if (reg && reg.waiting) reg.waiting.postMessage("skip-waiting");
+        else location.reload();
+      }}),
+    document.getElementById("status"));
 }
