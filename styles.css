@@ -326,7 +326,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .grid-wrap { margin-bottom: 20px; }
 .grid {
   display: grid;
-  grid-template-columns: 44px repeat(7, 1fr);
+  grid-template-columns: 64px repeat(7, 1fr);
   gap: 3px;
   align-items: stretch;
 }
@@ -338,7 +338,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   justify-content: center;
 }
 .grid-day.now { color: var(--text); }
-.grid-label { justify-content: flex-start; font-size: 12px; }
+.grid-label { justify-content: flex-start; font-size: 11px; }
 .cell {
   min-height: 34px;
   border: none;
@@ -394,3 +394,37 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .hours-field::-webkit-outer-spin-button,
 .hours-field::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Chart */
+.chart-wrap { margin-bottom: 20px; }
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.readout { min-height: 46px; display: flex; align-items: center; }
+.readout-hint { font-size: 12px; color: var(--dim); }
+.readout-open {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 14px;
+  padding: 0;
+  text-align: left;
+}
+.readout-open .key { font-size: 14px; }
+.readout-go { margin-left: auto; color: var(--dim); font-size: 13px; }
+
+/* Chart legend */
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; }
+.legend .item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+.legend .swatch { width: 14px; height: 2px; border-radius: 1px; }
+.legend .note { font-size: 12px; color: var(--dim); }

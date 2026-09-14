@@ -34,7 +34,7 @@ and the tab appears only while you are on one, so there is a way back.
 
 **History** is the full list of days, plus the backup buttons.
 
-**Baseline** is your normal value for each of the 22 rated items. Hours slept has no baseline.
+**Baseline** is your normal value for each of the 23 rated items. Hours slept has no baseline.
 
 ## Putting it on the phone
 
@@ -187,6 +187,18 @@ validated formula for predicting PEM from self-reported exertion. The nearest
 research idea is Leonard Jason's energy envelope work, which is correlational
 and small. The name says predictor; read it as a prompt to think.
 
+## Post-dinner indigestion
+
+Until v1.6.0 this was "stomach at bedtime", a four way pick of none / normal /
+heavy / odd. It is now a 0-3 rating like every other symptom, which means it
+gets a baseline, counts toward the symptom score, and exports with a number.
+
+The old values are **not converted** — "odd" is not a point on a severity scale
+and guessing one would be inventing data. Records from before the change keep
+their `stomach` value and still export it as `Stomach at bedtime`. New records
+use `Post-dinner indigestion`. Its baseline starts at 0; set your own on the
+Baseline screen.
+
 ## Hours slept
 
 Recorded on the Morning screen with half hour steps, so it needs no keyboard in
@@ -205,11 +217,22 @@ your Visible history uses, even though the screen now labels it Sleep quality.
 - Touch targets at least 46px.
 - No animation, no transitions, no confirmation dialogs.
 - One scrolling column, 460px max, system font.
+- Severity reads as heat: nothing, yellow, orange, red. Yellow through orange
+  to red is the one multi-hue ramp that is not a rainbow — the hues carry the
+  meaning. Every filled step takes dark ink at 4.9:1 or better.
+- On a no/yes item, yes takes the severe end of the ramp. A crash drawn in the
+  mildest colour would read as a small thing.
 - A dot after a label means that value is off baseline. The dashed outline in
   a row marks the baseline, whether or not it is the value you picked.
 - On the dashboard, colour is distance from your baseline, not the raw value:
-  green better, grey at it, red worse. Every cell prints its number, so the
-  colour never carries the value on its own.
+  green better, grey at it, then the same yellow-orange-red heat for one, two,
+  three or more steps worse. Every cell prints its number, so the colour never
+  carries the value on its own.
+- The chart's two lines were checked for colourblind separation rather than
+  guessed: worst pair ΔE 17.6 under protanopia against a floor of 8. They sit
+  slightly outside the standard categorical lightness and chroma bands on
+  purpose — hitting those bands means a more saturated, brighter line, which
+  this screen cannot have.
 - Sleep gets a valenced ramp of its own on the entry screen, because 3 is a
   good night there while 3 means worst on every other row.
 

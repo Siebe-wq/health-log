@@ -2,36 +2,57 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.5.0";
+var VERSION = "v1.6.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
 /* ---------- scales ---------- */
 
-var RAMP4 = ["#2B333C", "#5C4A2C", "#8A6A31", "#C08A4B"];
-var RAMP6 = ["#2B333C", "#4A4030", "#6B5730", "#8C6E33", "#AA7E3E", "#C9884A"];
+/* Severity reads as heat: nothing, yellow, orange, red. Yellow to red through
+   orange is the one multi-hue ramp that is not a rainbow — the hues carry the
+   meaning rather than decorating it. Every step takes dark ink at 4.9:1 or
+   better, and none of them is bright enough to glare in a dark room. */
+var RAMP4 = ["#2B333C", "#A88A38", "#C07A3E", "#CE6A55"];
+var RAMP6 = ["#2B333C", "#645429", "#A88A38", "#C07A3E", "#CE6A55", "#D8806C"];
 
-/* Sleep runs the other way to everything else: 3 is a good night. It gets a
-   valenced ramp so a good night is never painted in the alarm colour. */
-var SLEEP_RAMP = ["#C4704F", "#7A4436", "#454F5C", "#53946A"];
+/* Sleep quality runs the other way — 3 is a good night — so it runs down
+   through the same heat and out the other side into green. */
+var SLEEP_RAMP = ["#CE6A55", "#C07A3E", "#454F5C", "#53946A"];
 
-/* Green / grey / red against your own baseline. Two steps each side, widely
-   separated: a mid red sits in a contrast valley where neither text colour
-   clears 4.5:1. Every cell prints its value, so the colour is never the only
-   thing carrying the number. */
+/* On Home, colour is distance from your baseline rather than the raw value,
+   so the heat continues past the neutral into green for better than normal. */
 var VAL = {
   good2: "#53946A",   /* two or more better than baseline */
   good1: "#35604A",
   same:  "#454F5C",
-  bad1:  "#7A4436",
-  bad2:  "#C4704F",   /* two or more worse */
+  bad1:  "#A88A38",   /* one worse  — yellow */
+  bad2:  "#C07A3E",   /* two worse  — orange */
+  bad3:  "#CE6A55",   /* three or more worse — red */
   none:  "transparent"
 };
+
+/* The two lines on the chart. Checked for colourblind separation rather than
+   guessed: worst pair ΔE 17.6 under protanopia, 20.2 under normal vision,
+   both well clear of the floor. Each line is also labelled at its end, so hue
+   is never the only thing telling them apart. */
+var SERIES = { symptoms: "#C4714C", exertion: "#6890C6" };
+
 /* Whichever of the two text colours actually reads on each fill. */
 var INK = {
-  "#53946A": "#14181C", "#35604A": "#C6CED6", "#454F5C": "#C6CED6",
-  "#7A4436": "#C6CED6", "#C4704F": "#14181C", "#C08A4B": "#14181C"
+  "#A88A38": "#14181C", "#C07A3E": "#14181C", "#CE6A55": "#14181C",
+  "#D8806C": "#14181C", "#53946A": "#14181C",
+  "#2B333C": "#C6CED6", "#645429": "#C6CED6", "#454F5C": "#C6CED6",
+  "#35604A": "#C6CED6"
 };
+
+/* A 0-100 load, banded the same way the PEM predictor bands itself. */
+function heatFill(score) {
+  if (score === null || score === undefined) return VAL.none;
+  if (score === 0) return VAL.same;
+  if (score <= 20) return VAL.bad1;
+  if (score <= 40) return VAL.bad2;
+  return VAL.bad3;
+}
 
 function valenceFill(delta) {
   if (delta === null || delta === undefined) return VAL.none;
@@ -39,7 +60,8 @@ function valenceFill(delta) {
   if (delta === -1) return VAL.good1;
   if (delta === 0) return VAL.same;
   if (delta === 1) return VAL.bad1;
-  return VAL.bad2;
+  if (delta === 2) return VAL.bad2;
+  return VAL.bad3;
 }
 
 /* ---------- items ---------- */
@@ -65,7 +87,8 @@ var EVENING_SECTIONS = [
   ]},
   { title: "Gut", items: [
     { key: "constipation", label: "Constipation" },
-    { key: "diarrhea", label: "Diarrhea" }
+    { key: "diarrhea", label: "Diarrhea" },
+    { key: "indigestion", label: "Post-dinner indigestion" }
   ]},
   { title: "What the day asked of you", items: [
     { key: "physical", label: "Physically active" },
@@ -93,13 +116,14 @@ var ALL_KEYS = ALL_ITEMS.map(function (i) { return i.key; });
 var DEFAULT_BASELINES = {
   tired: 2, pem: 1, crash: 0, brainFog: 2, headache: 0, noise: 2,
   muscleAches: 1, muscleWeakness: 2, breath: 1, soreThroat: 0,
-  sweating: 0, hyper: 1, constipation: 0, diarrhea: 0,
+  sweating: 0, hyper: 1, constipation: 0, diarrhea: 0, indigestion: 0,
   physical: 1, mental: 1, social: 1, emotional: 0, pacing: 1,
   sleep: 2, episode: 0, syncope: 0
 };
 
 var TAGS = ["episode", "visitor", "extra med", "bad night", "GI", "heat", "appointment"];
-var STOMACH = ["none", "normal", "heavy", "odd"];
+/* "Stomach at bedtime" was a four way pick until v1.6.0, when it became the
+   rated Post-dinner indigestion item. Old values still export unchanged. */
 
 /* ---------- export naming (matches the Visible CSV) ---------- */
 
@@ -110,7 +134,8 @@ var EXPORT_NAME = {
   muscleWeakness: "Muscle weakness", breath: "Shortness of breath",
   soreThroat: "Sore throat", sweating: "Sweating & thermal dysregulation",
   hyper: "Hyper/sympathetic overdrive", constipation: "Constipation",
-  diarrhea: "Diarrhea", physical: "Physically active", mental: "Mentally demanding",
+  diarrhea: "Diarrhea", indigestion: "Post-dinner indigestion",
+  physical: "Physically active", mental: "Mentally demanding",
   social: "Socially demanding", emotional: "Emotionally stressful",
   pacing: "Pacing (low = better)", sleep: "Sleep",
   episode: "Dysautonomic episode (0-5)", syncope: "Near-syncope",
@@ -124,6 +149,7 @@ var CATEGORY = {
   noise: "Sensory", muscleAches: "Muscles", muscleWeakness: "Muscles",
   breath: "Heart and Lungs", soreThroat: "Pain", sweating: "Custom",
   hyper: "Custom", constipation: "Gastrointestinal", diarrhea: "Gastrointestinal",
+  indigestion: "Gastrointestinal",
   physical: "Physical", mental: "Cognitive", social: "Social",
   emotional: "Emotional", pacing: "Custom", sleep: "Sleep",
   episode: "Custom", syncope: "Custom", lastBite: "Custom", stomach: "Custom",
@@ -299,7 +325,9 @@ function ratingRow(item, getValue, setValue, baselineOf, onAfter) {
       var isBase = base === n;
       b.setAttribute("aria-pressed", on ? "true" : "false");
       b.setAttribute("data-baseline", isBase ? "1" : "0");
-      var fill = ramp[Math.min(n, ramp.length - 1)];
+      /* On a no/yes item, yes is the severe end, not step one of four. A crash
+         drawn in the mildest colour on the scale would read as a small thing. */
+      var fill = ramp[max === 1 && n === 1 ? ramp.length - 1 : Math.min(n, ramp.length - 1)];
       /* The warm ramps go dark-on-fill from step 2 up. A valenced ramp is not
          monotone in lightness, so it says which ink it takes. */
       b.setAttribute("data-dark", (INK[fill] || (n >= 2 ? "#14181C" : "")) === "#14181C" ? "1" : "0");
@@ -582,6 +610,153 @@ function pemTile() {
   return box;
 }
 
+/* Fourteen days of the two things that move against each other: what you spent
+   and what it cost. Both run 0-100 up-is-worse so the lead and the lag are
+   readable as shapes. Tap anywhere to read a day off; tap the readout to open
+   it.
+
+   Missing days break the line rather than being drawn through — a straight
+   segment across a gap would invent days you never logged. */
+var CHART_DAYS = 14;
+var chartPick = null;     /* index of the day being read, or null */
+
+function chartSeries() {
+  var t = today();
+  var out = [];
+  for (var i = CHART_DAYS - 1; i >= 0; i--) {
+    var d = shiftDay(t, -i);
+    var e = state.days[d];
+    var sym = e ? dayBurden(e) : null;
+    var ex = e ? loadBurden(e) : null;
+    out.push({
+      date: d,
+      symptoms: sym === null ? null : Math.round(100 * sym),
+      exertion: ex === null ? null : Math.round(100 * ex)
+    });
+  }
+  return out;
+}
+
+function chart() {
+  var rows = chartSeries();
+  var has = rows.some(function (r) { return r.symptoms !== null || r.exertion !== null; });
+  var wrap = el("div", { class: "chart-wrap" });
+  if (!has) {
+    wrap.appendChild(el("div", { class: "hint", text: "The chart fills in as days are logged." }));
+    return wrap;
+  }
+
+  var W = 320, H = 116, padL = 6, padR = 6, padT = 8, padB = 14;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+  var x = function (i) { return padL + (plotW * i) / (CHART_DAYS - 1); };
+  var y = function (v) { return padT + plotH * (1 - v / 100); };
+
+  var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("class", "chart");
+  svg.setAttribute("role", "img");
+  function node(name, attrs) {
+    var n = document.createElementNS("http://www.w3.org/2000/svg", name);
+    Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    return n;
+  }
+
+  /* recessive guides: the midline and the floor */
+  [0, 50, 100].forEach(function (v) {
+    svg.appendChild(node("line", { x1: padL, x2: padL + plotW, y1: y(v), y2: y(v),
+      stroke: "#252D36", "stroke-width": v === 0 ? 1 : 0.5 }));
+  });
+
+  /* one path per unbroken run, so gaps stay gaps */
+  ["exertion", "symptoms"].forEach(function (key) {
+    var run = [];
+    function flush() {
+      if (run.length === 1) {
+        svg.appendChild(node("circle", { cx: run[0][0], cy: run[0][1], r: 2, fill: SERIES[key] }));
+      } else if (run.length > 1) {
+        svg.appendChild(node("path", {
+          d: "M" + run.map(function (p) { return p[0] + " " + p[1]; }).join("L"),
+          fill: "none", stroke: SERIES[key], "stroke-width": 2,
+          "stroke-linecap": "round", "stroke-linejoin": "round"
+        }));
+      }
+      run = [];
+    }
+    rows.forEach(function (r, i) {
+      if (r[key] === null) { flush(); return; }
+      run.push([x(i), y(r[key])]);
+    });
+    flush();
+
+  });
+
+  var marker = node("g", {});
+  svg.appendChild(marker);
+
+  function paintPick() {
+    marker.innerHTML = "";
+    if (chartPick === null) return;
+    var r = rows[chartPick];
+    marker.appendChild(node("line", { x1: x(chartPick), x2: x(chartPick), y1: padT, y2: padT + plotH,
+      stroke: "#77828E", "stroke-width": 1 }));
+    ["exertion", "symptoms"].forEach(function (key) {
+      if (r[key] === null) return;
+      marker.appendChild(node("circle", { cx: x(chartPick), cy: y(r[key]), r: 4,
+        fill: SERIES[key], stroke: "#0F1216", "stroke-width": 2 }));
+    });
+  }
+
+  /* one hit target per day, the full height of the plot */
+  rows.forEach(function (r, i) {
+    var half = plotW / (CHART_DAYS - 1) / 2;
+    var hit = node("rect", { x: x(i) - half, y: 0, width: half * 2, height: H,
+      fill: "transparent", style: "cursor:pointer" });
+    hit.addEventListener("pointerdown", function () {
+      chartPick = chartPick === i ? null : i;
+      paintPick(); paintReadout();
+    });
+    svg.appendChild(hit);
+  });
+
+  wrap.appendChild(svg);
+
+  function swatch(colour, label) {
+    var sw = el("span", { class: "swatch" });
+    sw.style.background = colour;
+    return el("span", { class: "item" }, [sw, el("span", { text: label })]);
+  }
+  wrap.appendChild(el("div", { class: "legend" }, [
+    swatch(SERIES.symptoms, "Symptoms"),
+    swatch(SERIES.exertion, "Exertion"),
+    el("span", { class: "note", text: "0-100, up is worse" })
+  ]));
+
+  var readout = el("div", { class: "readout" });
+  function paintReadout() {
+    readout.innerHTML = "";
+    if (chartPick === null) {
+      readout.appendChild(el("span", { class: "readout-hint",
+        text: "Tap any day to read it off" }));
+      return;
+    }
+    var r = rows[chartPick];
+    var open = el("button", { class: "readout-open", type: "button",
+      onclick: function () { openEvening(r.date); } }, [
+      el("span", { text: pretty(r.date) }),
+      el("span", { class: "key sym", text: "sym " + (r.symptoms === null ? "–" : r.symptoms) }),
+      el("span", { class: "key exe", text: "exe " + (r.exertion === null ? "–" : r.exertion) }),
+      el("span", { class: "readout-go", text: "open" })
+    ]);
+    open.querySelector(".sym").style.color = SERIES.symptoms;
+    open.querySelector(".exe").style.color = SERIES.exertion;
+    readout.appendChild(open);
+  }
+  paintPick();
+  paintReadout();
+  wrap.appendChild(readout);
+  return wrap;
+}
+
 /* Seven days, four rows: sleep, PEM, and how many items sat worse than
    baseline. Colour is the distance from your baseline, not the raw value, and
    every cell prints its number so the colour is never doing the work alone. */
@@ -590,8 +765,8 @@ function weekGrid() {
   var rows = [
     { key: "sleep", label: "Sleep" },
     { key: "pem", label: "PEM" },
-    { key: null, label: "Worse" },
-    { key: null, label: "Push", load: true }
+    { kind: "symptoms", label: "Symptoms" },
+    { kind: "exertion", label: "Exertion" }
   ];
   var grid = el("div", { class: "grid" });
   grid.appendChild(el("div", {}));                       /* corner */
@@ -609,31 +784,27 @@ function weekGrid() {
     grid.appendChild(el("div", { class: "grid-label", text: row.label }));
     dates.forEach(function (d) {
       var e = state.days[d];
-      var text = "–", fill = VAL.none, delta = null;
-      /* Each row asks its own half of the record whether that day counts:
-         Push reads the demand items, the rest read the symptom items. */
-      var ready = e && (row.load ? loadBurden(e) !== null : dayBurden(e) !== null);
-      if (ready) {
-        if (row.key === null) {
-          /* how many items sat above baseline, in the same two red steps:
-             symptoms for Worse, the five demand items for Push */
-          var above = (row.load ? DEMAND_ITEMS : SCORE_ITEMS).filter(function (it) {
-            if (!itemCounts(e, it.key)) return false;
-            var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
-            return b !== null && b > 0;
-          }).length;
-          text = String(above);
-          delta = above === 0 ? 0 : above <= 2 ? 1 : 2;
-        } else {
+      var text = "–", fill = VAL.none;
+      if (e) {
+        if (row.kind) {
+          /* 0-100, both running the same way: up is worse. The rows only make
+             sense read together, and a chart where one line means the opposite
+             of the other cannot be read at all. */
+          var load = row.kind === "exertion" ? loadBurden(e) : dayBurden(e);
+          if (load !== null) {
+            var score = Math.round(100 * load);
+            text = String(score);
+            fill = heatFill(score);
+          }
+        } else if (dayBurden(e) !== null || itemCounts(e, row.key)) {
           var v = itemCounts(e, row.key) ? e.v[row.key] : undefined;
           if (v !== undefined) {
             var item = ITEM_BY_KEY[row.key];
             var base = state.baselines[row.key];
             text = String(v);
-            delta = item.higherIsBetter ? base - v : v - base;
+            fill = valenceFill(item.higherIsBetter ? base - v : v - base);
           }
         }
-        if (delta !== null) fill = valenceFill(delta);
       }
       var cell = el("button", {
         class: "cell" + (fill === VAL.none ? " empty" : ""), type: "button", text: text,
@@ -651,7 +822,7 @@ function weekGrid() {
   return el("div", { class: "grid-wrap" }, [
     grid,
     el("div", { class: "strip-cap",
-      text: "Worse = symptoms above baseline. Push = demand above it." })
+      text: "Sleep and PEM are the values you entered. Symptoms and Exertion are 0-100, higher is worse." })
   ]);
 }
 
@@ -728,6 +899,7 @@ function homeScreen() {
   wrap.appendChild(el("div", { class: "spacer" }));
   wrap.appendChild(scoreTile());
   wrap.appendChild(pemTile());
+  wrap.appendChild(chart());
   wrap.appendChild(weekGrid());
   done.forEach(function (c) { wrap.appendChild(c); });
   wrap.appendChild(backupLine());
@@ -802,33 +974,9 @@ function eveningScreen() {
     update(date, function (e) { e.lastBite = bite.value; });
     saveSoon(200);
   });
-  var stomachRow = el("div", { class: "opts" });
-  var stomachBtns = [];
-  STOMACH.forEach(function (s) {
-    var b = el("button", { type: "button", text: s, "aria-pressed": "false", onclick: function () {
-      update(date, function (e) { e.stomach = e.stomach === s ? "" : s; });
-      saveNow(); paintStomach();
-    }});
-    stomachBtns.push(b);
-    stomachRow.appendChild(b);
-  });
-  function paintStomach() {
-    var cur = getEntry(date).stomach;
-    stomachBtns.forEach(function (b, i) {
-      var on = cur === STOMACH[i];
-      b.setAttribute("aria-pressed", on ? "true" : "false");
-      b.setAttribute("data-dark", on ? "1" : "0");
-      b.style.background = on ? "var(--accent)" : "";
-      b.style.borderColor = on ? "var(--accent)" : "";
-    });
-  }
-  paintStomach();
   wrap.appendChild(section("Bedtime", [
     el("div", { class: "field-label", text: "Time of last bite" }),
-    bite,
-    el("div", { class: "spacer" }),
-    el("div", { class: "field-label", text: "Stomach" }),
-    stomachRow
+    bite
   ]));
 
   /* note + tags */
