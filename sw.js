@@ -1,6 +1,6 @@
 /* Offline shell. Bump CACHE whenever any file changes — it must match the
    VERSION string in app.js, otherwise the phone keeps serving the old build. */
-var CACHE = "daily-log-v1.7.0";
+var CACHE = "daily-log-v1.8.0";
 var ASSETS = [
   "./",
   "./index.html",

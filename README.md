@@ -29,12 +29,14 @@ Under that are two numbers — the **week score** (how it has been) and the
 grid of sleep, PEM, symptoms above baseline and demand above it. At the bottom is how
 long ago you last downloaded a backup.
 
+**Pot** is the reward tab, reached from Home like Evening and Morning.
+
 **Evening** and **Morning** are not permanent tabs. You reach them from Home,
 and the tab appears only while you are on one, so there is a way back.
 
 **History** is the full list of days, plus the backup buttons.
 
-**Baseline** is your normal value for each of the 23 rated items. Hours slept has no baseline.
+**Baseline** is your normal value for each of the 24 rated items. Hours slept has no baseline.
 
 ## Putting it on the phone
 
@@ -99,6 +101,30 @@ GitHub Pages takes about a minute to publish after a push. After that:
   you open it online.
 
 So: yes, it updates itself, but only when opened online, and never mid-entry.
+
+## The pot
+
+Two things pay, and both are things worth reinforcing rather than things that
+happen to you:
+
+```
+€0.20  each thing done well
+€0.25  a day paced at 1
+€0.50  a day paced at 0
+```
+
+**Did something well** on Home logs one with a single tap. The text is optional
+and comes after the tap, never before it, so a bad day still gets the tap.
+Nothing blocks, and the last one can be removed if it was a mis-tap.
+
+A day only pays for pacing you actually stood behind — the same rule the scores
+use. Every record starts pre-filled at baseline, and pacing's baseline is 1, so
+without that rule a day you never really logged would quietly earn €0.25.
+
+Amounts are written as `€0.20` rather than `€ 0,20`. Say the word if you would
+rather have the Dutch format.
+
+Wins export as `Done well` rows, one per win, carrying the text.
 
 ## The week score
 
@@ -236,6 +262,10 @@ without a signal.
 - Touch targets at least 46px.
 - No animation, no transitions, no confirmation dialogs.
 - One scrolling column, 460px max, system font.
+- The Evening screen is split by three large headers — Symptoms, Exertion,
+  Bedtime and notes — so what happened to you and what you asked of yourself
+  are never read as one list. The old group headers stay as small subtitles
+  under them.
 - Severity reads as heat: nothing, yellow, orange, red. Yellow through orange
   to red is the one multi-hue ramp that is not a rainbow — the hues carry the
   meaning. Every filled step takes dark ink at 4.9:1 or better.

@@ -150,7 +150,7 @@ button, input, textarea, select {
 .pair .btn { flex: 1; }
 
 /* Inputs */
-input[type="time"], textarea, input[type="file"] {
+input[type="time"], input[type="text"], textarea, input[type="file"] {
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -443,3 +443,69 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   text-align: left;
   width: 100%;
 }
+
+/* The two halves of the evening: how you were, and what you asked of yourself. */
+.band {
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--text);
+  margin: 28px 0 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.band:first-child { margin-top: 8px; }
+
+/* Something done well */
+.win-box { margin-bottom: 20px; }
+.win-btn {
+  min-height: 56px;
+  background: var(--surface-up);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 16px;
+}
+.win-input { margin-top: 8px; }
+.win-added {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dim);
+  margin-top: 8px;
+}
+.win-undo {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 13px;
+  min-height: 46px;
+  padding: 0 4px;
+}
+.win-text { font-size: 13px; color: var(--dim); margin-top: 6px; }
+
+/* The pot */
+.pot-line {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 13px;
+  min-height: 46px;
+  padding: 0;
+}
+.pot-amount { color: var(--text); font-size: 15px; }
+.score-num.pot { color: var(--accent); }
+.pay-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+  min-height: 34px;
+}
+.pay-sum { color: var(--dim); font-size: 13px; }
+.pay-amount { margin-left: auto; color: var(--text); }
+.day-pay { color: var(--text); margin-left: 10px; }

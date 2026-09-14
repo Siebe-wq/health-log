@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.7.0";
+var VERSION = "v1.8.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
@@ -76,12 +76,13 @@ function valenceFill(delta) {
 /* ---------- items ---------- */
 
 var EVENING_SECTIONS = [
-  { title: "Energy", items: [
+  { title: "Energy", band: "Symptoms", items: [
     { key: "tired", label: "Feeling tired / sluggish" },
     { key: "pem", label: "PEM" },
     { key: "crash", label: "Crash", max: 1, labels: ["no", "yes"] }
   ]},
   { title: "Brain", items: [
+    { key: "mood", label: "Mood", labels: ["happy", "ok", "meh", "bad"] },
     { key: "brainFog", label: "Brain fog" },
     { key: "headache", label: "Headache" },
     { key: "noise", label: "Noise sensitivity" }
@@ -99,7 +100,7 @@ var EVENING_SECTIONS = [
     { key: "diarrhea", label: "Diarrhea" },
     { key: "indigestion", label: "Post-dinner indigestion" }
   ]},
-  { title: "What the day asked of you", items: [
+  { title: "What the day asked of you", band: "Exertion", items: [
     { key: "physical", label: "Physically active" },
     { key: "mental", label: "Mentally demanding" },
     { key: "social", label: "Socially demanding" },
@@ -123,7 +124,7 @@ var EVENING_KEYS = EVENING_ITEMS.map(function (i) { return i.key; });
 var ALL_KEYS = ALL_ITEMS.map(function (i) { return i.key; });
 
 var DEFAULT_BASELINES = {
-  tired: 2, pem: 1, crash: 0, brainFog: 2, headache: 0, noise: 2,
+  tired: 2, pem: 1, crash: 0, mood: 1, brainFog: 2, headache: 0, noise: 2,
   muscleAches: 1, muscleWeakness: 2, breath: 1, soreThroat: 0,
   sweating: 0, hyper: 1, constipation: 0, diarrhea: 0, indigestion: 0,
   physical: 1, mental: 1, social: 1, emotional: 0, pacing: 1,
@@ -138,7 +139,7 @@ var TAGS = ["episode", "visitor", "extra med", "bad night", "GI", "heat", "appoi
 
 var EXPORT_NAME = {
   tired: "Feeling tired/sluggish", pem: "Post-exertional malaise",
-  crash: "Crash", brainFog: "Brain Fog",
+  crash: "Crash", mood: "Mood", brainFog: "Brain Fog",
   headache: "Headache", noise: "Noise sensitivity", muscleAches: "Muscle aches",
   muscleWeakness: "Muscle weakness", breath: "Shortness of breath",
   soreThroat: "Sore throat", sweating: "Sweating & thermal dysregulation",
@@ -154,7 +155,7 @@ var EXPORT_NAME = {
 
 var CATEGORY = {
   tired: "General", pem: "General", crash: "Experience",
-  brainFog: "Brain", headache: "Brain",
+  mood: "Emotional", brainFog: "Brain", headache: "Brain",
   noise: "Sensory", muscleAches: "Muscles", muscleWeakness: "Muscles",
   breath: "Heart and Lungs", soreThroat: "Pain", sweating: "Custom",
   hyper: "Custom", constipation: "Gastrointestinal", diarrhea: "Gastrointestinal",
@@ -260,7 +261,7 @@ function flash(text) {
 function emptyEntry(date) {
   return {
     date: date, v: Object.assign({}, state.baselines), touched: {},
-    lastBite: "", stomach: "", sleepHours: "", tags: [], note: "", nightNote: "",
+    lastBite: "", stomach: "", sleepHours: "", wins: [], tags: [], note: "", nightNote: "",
     complete: false, morningDone: false, savedAt: null, updatedAt: null
   };
 }
@@ -515,6 +516,124 @@ function weekScore(endDate) {
   }
   if (days < 3) return { score: null, days: days };
   return { score: Math.round(100 * (1 - sum / weight)), days: days };
+}
+
+/* ---------- the pot ---------- */
+
+/* Paid for the two things worth reinforcing: noticing you did something well,
+   and pacing. Pacing is scored on the value itself rather than on the distance
+   from baseline — 1 is your normal and still earns, 0 earns double. */
+var PAY_WIN = 0.20;
+var PAY_PACING = { 0: 0.50, 1: 0.25 };
+
+function euro(n) {
+  return "\u20ac" + n.toFixed(2);
+}
+
+/* A day only pays for pacing you actually stood behind, so days that merely
+   exist at their pre-filled baseline do not quietly earn. */
+function pacingPay(entry) {
+  if (!entry || !itemCounts(entry, "pacing")) return 0;
+  var v = entry.v.pacing;
+  return PAY_PACING[v] || 0;
+}
+function winCount(entry) {
+  return entry && entry.wins ? entry.wins.length : 0;
+}
+function dayPay(entry) {
+  return winCount(entry) * PAY_WIN + pacingPay(entry);
+}
+
+function potTotal() {
+  var total = 0;
+  Object.keys(state.days).forEach(function (d) { total += dayPay(state.days[d]); });
+  return total;
+}
+
+function logWin(date, text) {
+  update(date, function (e) {
+    if (!e.wins) e.wins = [];
+    e.wins = e.wins.concat([{ at: new Date().toISOString(), text: text || "" }]);
+  });
+  saveNow();
+}
+
+function removeWin(date, index) {
+  update(date, function (e) {
+    e.wins = (e.wins || []).slice();
+    e.wins.splice(index, 1);
+  });
+  saveNow();
+}
+
+function rewardsScreen() {
+  var wrap = el("div");
+  var dates = Object.keys(state.days).sort().reverse();
+  var wins = 0, pacing1 = 0, pacing0 = 0;
+  dates.forEach(function (d) {
+    var e = state.days[d];
+    wins += winCount(e);
+    var p = pacingPay(e);
+    if (p === PAY_PACING[0]) pacing0++;
+    else if (p === PAY_PACING[1]) pacing1++;
+  });
+
+  wrap.appendChild(el("div", { class: "score" }, [
+    el("div", { class: "score-label", text: "In the pot" }),
+    el("div", { class: "score-head" }, [
+      el("span", { class: "score-num pot", text: euro(potTotal()) })
+    ]),
+    el("div", { class: "score-cap", text: "Everything logged so far" })
+  ]));
+
+  wrap.appendChild(el("div", { class: "section" }, [
+    el("h2", { class: "section-head", text: "Where it came from" }),
+    payLine(wins + (wins === 1 ? " thing done well" : " things done well"),
+      wins + " × " + euro(PAY_WIN), wins * PAY_WIN),
+    payLine(pacing1 + (pacing1 === 1 ? " day pacing at 1" : " days pacing at 1"),
+      pacing1 + " × " + euro(PAY_PACING[1]), pacing1 * PAY_PACING[1]),
+    payLine(pacing0 + (pacing0 === 1 ? " day pacing at 0" : " days pacing at 0"),
+      pacing0 + " × " + euro(PAY_PACING[0]), pacing0 * PAY_PACING[0])
+  ]));
+
+  var earning = dates.filter(function (d) { return dayPay(state.days[d]) > 0; });
+  wrap.appendChild(el("h2", { class: "section-head", text: "Day by day" }));
+  if (earning.length === 0) {
+    wrap.appendChild(el("div", { class: "hint",
+      text: "Nothing yet. Tap “Did something well” on Home, or log a day paced at 1 or 0." }));
+  }
+  earning.forEach(function (d) {
+    var e = state.days[d];
+    var bits = [];
+    if (winCount(e)) bits.push(winCount(e) + (winCount(e) === 1 ? " win" : " wins"));
+    if (pacingPay(e)) bits.push("pacing " + e.v.pacing);
+    var row = el("button", { class: "day", type: "button",
+      onclick: function () { openEvening(d); } }, [
+      el("div", { class: "line" }, [
+        el("span", { text: pretty(d) }),
+        el("span", { class: "meta" }, [
+          el("span", { text: bits.join(" · ") }),
+          el("span", { class: "day-pay", text: euro(dayPay(e)) })
+        ])
+      ])
+    ]);
+    (e.wins || []).forEach(function (w) {
+      if (w.text) row.appendChild(el("div", { class: "win-text", text: "“" + w.text + "”" }));
+    });
+    wrap.appendChild(row);
+  });
+
+  wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
+    onclick: function () { state.tab = "home"; render(); } }));
+  return wrap;
+}
+
+function payLine(label, sum, amount) {
+  return el("div", { class: "pay-line" }, [
+    el("span", { text: label }),
+    el("span", { class: "pay-sum", text: sum }),
+    el("span", { class: "pay-amount", text: euro(amount) })
+  ]);
 }
 
 /* ---------- home ---------- */
@@ -852,20 +971,12 @@ function chart() {
   return host;
 }
 
-/* Seven days, four rows: sleep, PEM, and how many items sat worse than
-   baseline. Colour is the distance from your baseline, not the raw value, and
-   every cell prints its number so the colour is never doing the work alone. */
-function weekGrid() {
+/* One row: seven days of pacing, coloured by how it sits against your normal.
+   Pacing is the thing you can actually steer, so it is the thing kept in view. */
+function pacingRow() {
   var t = today();
-  var rows = [
-    { key: "sleep", label: "Sleep" },
-    { key: "pem", label: "PEM" },
-    { kind: "symptoms", label: "Symptoms" },
-    { kind: "exertion", label: "Exertion" }
-  ];
   var grid = el("div", { class: "grid" });
-  grid.appendChild(el("div", {}));                       /* corner */
-
+  grid.appendChild(el("div", {}));
   var dates = [];
   for (var i = 6; i >= 0; i--) dates.push(shiftDay(t, -i));
 
@@ -875,49 +986,29 @@ function weekGrid() {
       text: DAY_NAMES[new Date(p[0], p[1] - 1, p[2]).getDay()].charAt(0) }));
   });
 
-  rows.forEach(function (row) {
-    grid.appendChild(el("div", { class: "grid-label", text: row.label }));
-    dates.forEach(function (d) {
-      var e = state.days[d];
-      var text = "–", fill = VAL.none;
-      if (e) {
-        if (row.kind) {
-          /* 0-100, both running the same way: up is worse. The rows only make
-             sense read together, and a chart where one line means the opposite
-             of the other cannot be read at all. */
-          var load = row.kind === "exertion" ? loadBurden(e) : dayBurden(e);
-          if (load !== null) {
-            var score = Math.round(100 * load);
-            text = String(score);
-            fill = heatFill(score);
-          }
-        } else if (dayBurden(e) !== null || itemCounts(e, row.key)) {
-          var v = itemCounts(e, row.key) ? e.v[row.key] : undefined;
-          if (v !== undefined) {
-            var item = ITEM_BY_KEY[row.key];
-            var base = state.baselines[row.key];
-            text = String(v);
-            fill = valenceFill(item.higherIsBetter ? base - v : v - base);
-          }
-        }
-      }
-      var cell = el("button", {
-        class: "cell" + (fill === VAL.none ? " empty" : ""), type: "button", text: text,
-        "aria-label": pretty(d) + " " + row.label + " " + text,
-        onclick: function () { openEvening(d); }
-      });
-      if (fill !== VAL.none) {
-        cell.style.background = fill;
-        cell.style.color = INK[fill];
-      }
-      grid.appendChild(cell);
+  grid.appendChild(el("div", { class: "grid-label", text: "Pacing" }));
+  dates.forEach(function (d) {
+    var e = state.days[d];
+    var text = "\u2013", fill = VAL.none;
+    if (e && itemCounts(e, "pacing") && e.v.pacing !== undefined) {
+      text = String(e.v.pacing);
+      fill = valenceFill(e.v.pacing - state.baselines.pacing);
+    }
+    var cell = el("button", {
+      class: "cell" + (fill === VAL.none ? " empty" : ""), type: "button", text: text,
+      "aria-label": pretty(d) + " pacing " + text,
+      onclick: function () { openEvening(d); }
     });
+    if (fill !== VAL.none) {
+      cell.style.background = fill;
+      cell.style.color = INK[fill];
+    }
+    grid.appendChild(cell);
   });
 
   return el("div", { class: "grid-wrap" }, [
     grid,
-    el("div", { class: "strip-cap",
-      text: "Sleep and PEM are the values you entered. Symptoms and Exertion are 0-100, higher is worse." })
+    el("div", { class: "strip-cap", text: "Pacing, low is better" })
   ]);
 }
 
@@ -983,6 +1074,40 @@ function homeScreen() {
   if (new Date().getHours() < 15) due.reverse();
   due.forEach(function (c) { wrap.appendChild(c); });
 
+  /* Something done well. One tap logs it; the text is optional and comes
+     after, so a bad day still gets the tap. Nothing blocks. */
+  var todayEntry = state.days[t];
+  var winBox = el("div", { class: "win-box" });
+  var winMsg = el("div", { class: "win-added", style: { display: "none" } });
+  var winBtn = el("button", { class: "btn wide win-btn", type: "button",
+    text: "Did something well" });
+  winBtn.addEventListener("click", function () {
+    logWin(t);
+    render();
+    flash("Logged · " + euro(PAY_WIN));
+  });
+  winBox.appendChild(winBtn);
+
+  var count = winCount(state.days[t]);
+  if (count) {
+    var last = state.days[t].wins.length - 1;
+    var note = el("input", { type: "text", class: "win-input",
+      placeholder: "What was it? (optional)" });
+    note.value = state.days[t].wins[last].text || "";
+    note.addEventListener("input", function () {
+      update(t, function (e) { e.wins[last].text = note.value; });
+      saveSoon();
+    });
+    winMsg.style.display = "";
+    winMsg.appendChild(el("span", {
+      text: count + (count === 1 ? " thing" : " things") + " today · " + euro(count * PAY_WIN) }));
+    winMsg.appendChild(el("button", { class: "win-undo", type: "button", text: "remove last",
+      onclick: function () { removeWin(t, last); render(); } }));
+    winBox.appendChild(note);
+    winBox.appendChild(winMsg);
+  }
+  wrap.appendChild(winBox);
+
   /* The note written for yourself last night. */
   if (night && night.nightNote && !nightDone) {
     wrap.appendChild(el("div", { class: "note-card" }, [
@@ -995,8 +1120,13 @@ function homeScreen() {
   wrap.appendChild(scoreTile());
   wrap.appendChild(pemTile());
   wrap.appendChild(chart());
-  wrap.appendChild(weekGrid());
+  wrap.appendChild(pacingRow());
   done.forEach(function (c) { wrap.appendChild(c); });
+  wrap.appendChild(el("button", { class: "pot-line", type: "button",
+    onclick: function () { state.tab = "rewards"; render(); } }, [
+    el("span", { text: "In the pot" }),
+    el("span", { class: "pot-amount", text: euro(potTotal()) })
+  ]));
   wrap.appendChild(backupLine());
   return wrap;
 }
@@ -1047,7 +1177,12 @@ function eveningScreen() {
     counter.textContent = n + (n === 1 ? " item" : " items") + " away from baseline";
   }
 
+  var band = null;
   EVENING_SECTIONS.forEach(function (sec) {
+    if (sec.band && sec.band !== band) {
+      band = sec.band;
+      wrap.appendChild(el("h2", { class: "band", text: band }));
+    }
     var kids = sec.items.map(function (it) {
       var row = ratingRow(it,
         function () { return getEntry(date).v[it.key]; },
@@ -1069,7 +1204,10 @@ function eveningScreen() {
     update(date, function (e) { e.lastBite = bite.value; });
     saveSoon(200);
   });
-  wrap.appendChild(section("Bedtime", [
+  /* Neither a symptom nor something the day asked of you, so it gets its own
+     band rather than sitting under Exertion by accident. */
+  wrap.appendChild(el("h2", { class: "band", text: "Bedtime and notes" }));
+  wrap.appendChild(section(null, [
     el("div", { class: "field-label", text: "Time of last bite" }),
     bite
   ]));
@@ -1250,6 +1388,9 @@ function backupCsv() {
     }
     if (e.lastBite) rows.push([d, EXPORT_NAME.lastBite, CATEGORY.lastBite, e.lastBite, ""]);
     if (e.stomach) rows.push([d, EXPORT_NAME.stomach, CATEGORY.stomach, e.stomach, ""]);
+    (e.wins || []).forEach(function (w) {
+      rows.push([d, "Done well", "Custom", w.text || "logged", ""]);
+    });
     if (e.tags && e.tags.length) rows.push([d, "Tags", "Note", e.tags.join("|"), ""]);
     if (e.note) rows.push([d, "Note", "Note", e.note, ""]);
     if (e.nightNote) rows.push([d, "Night note", "Note", e.nightNote, ""]);
@@ -1400,6 +1541,7 @@ function renderTabs() {
   nav.innerHTML = "";
   var tabs = TABS.slice();
   if (state.tab === "evening") tabs.splice(1, 0, ["evening", "Evening"]);
+  if (state.tab === "rewards") tabs.splice(1, 0, ["rewards", "Pot"]);
   if (state.tab === "morning") tabs.splice(1, 0, ["morning", "Morning"]);
   tabs.forEach(function (t) {
     nav.appendChild(el("button", {
@@ -1428,6 +1570,7 @@ function render() {
   if (state.tab === "home") main.appendChild(homeScreen());
   else if (state.tab === "evening") main.appendChild(eveningScreen());
   else if (state.tab === "morning") main.appendChild(morningScreen());
+  else if (state.tab === "rewards") main.appendChild(rewardsScreen());
   else if (state.tab === "baseline") main.appendChild(baselineScreen());
   else main.appendChild(historyScreen());
   window.scrollTo(0, 0);
