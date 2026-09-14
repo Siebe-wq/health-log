@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.1.0";
+var VERSION = "v1.2.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 2;
 
@@ -16,6 +16,7 @@ var RAMP6 = ["#2B333C", "#4A4030", "#6B5730", "#8C6E33", "#AA7E3E", "#C9884A"];
 var EVENING_SECTIONS = [
   { title: "Energy", items: [
     { key: "tired", label: "Feeling tired / sluggish" },
+    { key: "pem", label: "PEM" },
     { key: "crash", label: "Crash", max: 1, labels: ["no", "yes"] }
   ]},
   { title: "Brain", items: [
@@ -57,7 +58,7 @@ var EVENING_KEYS = EVENING_ITEMS.map(function (i) { return i.key; });
 var ALL_KEYS = ALL_ITEMS.map(function (i) { return i.key; });
 
 var DEFAULT_BASELINES = {
-  tired: 2, crash: 0, brainFog: 2, headache: 0, noise: 2,
+  tired: 2, pem: 1, crash: 0, brainFog: 2, headache: 0, noise: 2,
   muscleAches: 1, muscleWeakness: 2, breath: 1, soreThroat: 0,
   sweating: 0, hyper: 1, constipation: 0, diarrhea: 0,
   physical: 1, mental: 1, social: 1, emotional: 0, pacing: 1,
@@ -70,7 +71,8 @@ var STOMACH = ["none", "normal", "heavy", "odd"];
 /* ---------- export naming (matches the Visible CSV) ---------- */
 
 var EXPORT_NAME = {
-  tired: "Feeling tired/sluggish", crash: "Crash", brainFog: "Brain Fog",
+  tired: "Feeling tired/sluggish", pem: "Post-exertional malaise",
+  crash: "Crash", brainFog: "Brain Fog",
   headache: "Headache", noise: "Noise sensitivity", muscleAches: "Muscle aches",
   muscleWeakness: "Muscle weakness", breath: "Shortness of breath",
   soreThroat: "Sore throat", sweating: "Sweating & thermal dysregulation",
@@ -83,7 +85,8 @@ var EXPORT_NAME = {
 };
 
 var CATEGORY = {
-  tired: "General", crash: "Experience", brainFog: "Brain", headache: "Brain",
+  tired: "General", pem: "General", crash: "Experience",
+  brainFog: "Brain", headache: "Brain",
   noise: "Sensory", muscleAches: "Muscles", muscleWeakness: "Muscles",
   breath: "Heart and Lungs", soreThroat: "Pain", sweating: "Custom",
   hyper: "Custom", constipation: "Gastrointestinal", diarrhea: "Gastrointestinal",

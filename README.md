@@ -32,7 +32,7 @@ and the tab appears only while you are on one, so there is a way back.
 
 **History** is the full list of days, plus the backup buttons.
 
-**Baseline** is your normal value for each of the 21 items.
+**Baseline** is your normal value for each of the 22 items.
 
 ## Putting it on the phone
 
