@@ -31,6 +31,12 @@ long ago you last downloaded a backup.
 
 **Pot** is the reward tab, reached from Home like Evening and Morning.
 
+The **Evening** card only appears from 21:00. Before then Home offers a quiet
+line instead, so the screen is still one tap away — a card that only existed
+after nine would leave no route in at four in the afternoon. The one-tap
+"nothing off baseline" save lives on that card, so it waits for the evening
+too. The hour is `EVENING_FROM_HOUR` at the top of the home section.
+
 **Evening** and **Morning** are not permanent tabs. You reach them from Home,
 and the tab appears only while you are on one, so there is a way back.
 
@@ -212,6 +218,19 @@ and symptoms are already down, it has landed.
 validated formula for predicting PEM from self-reported exertion. The nearest
 research idea is Leonard Jason's energy envelope work, which is correlational
 and small. The name says predictor; read it as a prompt to think.
+
+## Mood
+
+Five points with neutral in the middle: happy, good, neutral, meh, bad. It is
+the one genuinely two-sided scale in the app, so it gets a diverging ramp —
+green out to happy, orange and red out to bad — with intensity growing away
+from the middle in both directions rather than only upwards.
+
+It was four points in v1.8.0 (happy, ok, meh, bad). Inserting neutral shifted
+the meaning of 2 and 3, so the store carries a migration: anything written
+before store version 3 has mood 2 bumped to 3 and 3 bumped to 4, in day
+records and in the baseline. Restored backups go through the same step.
+Without it, a day logged as bad would quietly redisplay as meh.
 
 ## Post-dinner indigestion
 

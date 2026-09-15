@@ -2,9 +2,9 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.8.0";
+var VERSION = "v1.9.0";
 var STORE_KEY = "sr-daily-log-v1";
-var STORE_VERSION = 2;
+var STORE_VERSION = 3;
 
 /* ---------- scales ---------- */
 
@@ -18,6 +18,15 @@ var RAMP6 = ["#2B333C", "#645429", "#A88A38", "#C07A3E", "#CE6A55", "#D8806C"];
 /* Sleep quality runs the other way — 3 is a good night — so it runs down
    through the same heat and out the other side into green. */
 var SLEEP_RAMP = ["#CE6A55", "#C07A3E", "#454F5C", "#53946A"];
+
+/* Mood is the one genuinely two-sided scale: neutral in the middle, and
+   intensity growing outwards in both directions rather than only upwards. */
+var MOOD_RAMP = ["#53946A", "#35604A", "#454F5C", "#C07A3E", "#CE6A55"];
+
+/* Pacing is scored on the value, not the distance from baseline: 0 and 1 are
+   both paced days and both pay, so both read green, with 0 the stronger of
+   the two. Yellow is skipped — there is no "slightly off" here. */
+var PACING_RAMP = ["#53946A", "#35604A", "#C07A3E", "#CE6A55"];
 
 /* On Home, colour is distance from your baseline rather than the raw value,
    so the heat continues past the neutral into green for better than normal. */
@@ -82,7 +91,8 @@ var EVENING_SECTIONS = [
     { key: "crash", label: "Crash", max: 1, labels: ["no", "yes"] }
   ]},
   { title: "Brain", items: [
-    { key: "mood", label: "Mood", labels: ["happy", "ok", "meh", "bad"] },
+    { key: "mood", label: "Mood", max: 4, ramp: MOOD_RAMP,
+      labels: ["happy", "good", "neutral", "meh", "bad"] },
     { key: "brainFog", label: "Brain fog" },
     { key: "headache", label: "Headache" },
     { key: "noise", label: "Noise sensitivity" }
@@ -105,7 +115,7 @@ var EVENING_SECTIONS = [
     { key: "mental", label: "Mentally demanding" },
     { key: "social", label: "Socially demanding" },
     { key: "emotional", label: "Emotionally stressful" },
-    { key: "pacing", label: "Pacing (low = better)" }
+    { key: "pacing", label: "Pacing (low = better)", ramp: PACING_RAMP }
   ]}
 ];
 
@@ -124,7 +134,7 @@ var EVENING_KEYS = EVENING_ITEMS.map(function (i) { return i.key; });
 var ALL_KEYS = ALL_ITEMS.map(function (i) { return i.key; });
 
 var DEFAULT_BASELINES = {
-  tired: 2, pem: 1, crash: 0, mood: 1, brainFog: 2, headache: 0, noise: 2,
+  tired: 2, pem: 1, crash: 0, mood: 2, brainFog: 2, headache: 0, noise: 2,
   muscleAches: 1, muscleWeakness: 2, breath: 1, soreThroat: 0,
   sweating: 0, hyper: 1, constipation: 0, diarrhea: 0, indigestion: 0,
   physical: 1, mental: 1, social: 1, emotional: 0, pacing: 1,
@@ -210,11 +220,30 @@ var state = {
   chartKeys: ["symptoms", "exertion"]
 };
 
+/* Mood went from four points to five in v1.9.0, with neutral inserted in the
+   middle. Under the old scale 2 meant "meh" and 3 meant "bad"; under the new
+   one those are 3 and 4. Without this, a day logged as bad would quietly
+   redisplay as meh. Runs on anything written before store version 3, and on
+   restored backups too. */
+function migrate(parsed) {
+  if (!parsed || (parsed.version || 0) >= 3) return parsed;
+  var bump = function (v) { return v === 2 ? 3 : v === 3 ? 4 : v; };
+  Object.keys(parsed.days || {}).forEach(function (d) {
+    var e = parsed.days[d];
+    if (e && e.v && e.v.mood !== undefined) e.v.mood = bump(e.v.mood);
+  });
+  if (parsed.baselines && parsed.baselines.mood !== undefined) {
+    parsed.baselines.mood = bump(parsed.baselines.mood);
+  }
+  parsed.version = 3;
+  return parsed;
+}
+
 function loadStore() {
   try {
     var raw = localStorage.getItem(STORE_KEY);
     if (!raw) return;
-    var parsed = JSON.parse(raw);
+    var parsed = migrate(JSON.parse(raw));
     state.days = parsed.days || {};
     state.baselines = Object.assign({}, DEFAULT_BASELINES, parsed.baselines || {});
     state.lastBackupAt = parsed.lastBackupAt || null;
@@ -638,6 +667,9 @@ function payLine(label, sum, amount) {
 
 /* ---------- home ---------- */
 
+/* The hour the evening card appears. */
+var EVENING_FROM_HOUR = 21;
+
 /* The night that just ended is logged under yesterday's date. */
 function nightIsLogged(entry) {
   if (!entry) return false;
@@ -992,7 +1024,8 @@ function pacingRow() {
     var text = "\u2013", fill = VAL.none;
     if (e && itemCounts(e, "pacing") && e.v.pacing !== undefined) {
       text = String(e.v.pacing);
-      fill = valenceFill(e.v.pacing - state.baselines.pacing);
+      /* by value, not by distance from baseline: both paced days read green */
+      fill = PACING_RAMP[Math.min(e.v.pacing, PACING_RAMP.length - 1)];
     }
     var cell = el("button", {
       class: "cell" + (fill === VAL.none ? " empty" : ""), type: "button", text: text,
@@ -1008,7 +1041,7 @@ function pacingRow() {
 
   return el("div", { class: "grid-wrap" }, [
     grid,
-    el("div", { class: "strip-cap", text: "Pacing, low is better" })
+    el("div", { class: "strip-cap", text: "Pacing, low is better · 0 and 1 both pay" })
   ]);
 }
 
@@ -1036,17 +1069,26 @@ function homeScreen() {
   var night = state.days[y];
   var nightDone = nightIsLogged(night);
   var wrap = el("div");
-  var due = [], done = [];
+  var due = [], done = [], later = [];
 
   wrap.appendChild(el("div", { class: "home-head" }, [
     el("span", { text: pretty(t) }),
     el("span", { class: "sub", text: eveDone && nightDone ? " · all logged" : "" })
   ]));
 
+  /* The evening belongs to the evening. Before then the card is out of the
+     way, but the screen is still one tap from here — a card that only exists
+     after nine would otherwise leave no route in at four in the afternoon. */
+  var eveningOpen = new Date().getHours() >= EVENING_FROM_HOUR;
+
   /* Evening */
   if (eveDone) {
     done.push(doneLine("Evening logged · " + offBaselineKeys(eve, EVENING_KEYS).length + " off baseline",
       function () { openEvening(t); }));
+  } else if (!eveningOpen) {
+    later.push(el("button", { class: "quiet-btn", type: "button",
+      text: eve ? "Evening — draft saved, open it now" : "Evening — open it now",
+      onclick: function () { openEvening(t); } }));
   } else if (eve) {
     due.push(dueCard("Finish the evening",
       "Draft · " + offBaselineKeys(eve, EVENING_KEYS).length + " off baseline",
@@ -1073,6 +1115,7 @@ function homeScreen() {
   /* Before mid-afternoon the night comes first. */
   if (new Date().getHours() < 15) due.reverse();
   due.forEach(function (c) { wrap.appendChild(c); });
+  later.forEach(function (c) { wrap.appendChild(c); });
 
   /* Something done well. One tap logs it; the text is optional and comes
      after, so a bad day still gets the tap. Nothing blocks. */
@@ -1414,6 +1457,7 @@ function download(name, text, type) {
 
 /* Merge, never clobber: a day already here is only replaced by a newer one. */
 function restore(parsed) {
+  parsed = migrate(parsed);
   var added = 0, updated = 0, kept = 0;
   var days = parsed.days || {};
   Object.keys(days).forEach(function (d) {
