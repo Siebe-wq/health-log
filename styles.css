@@ -52,12 +52,15 @@ button, input, textarea, select {
 }
 .tabs button {
   flex: 1;
+  min-width: 0;
   min-height: 46px;
   border-radius: 8px;
   background: transparent;
   border: 1px solid transparent;
   color: var(--dim);
-  font-size: 14px;
+  font-size: 13px;
+  padding: 0 2px;
+  white-space: nowrap;
 }
 .tabs button[aria-selected="true"] {
   background: var(--surface-up);
@@ -150,7 +153,7 @@ button, input, textarea, select {
 .pair .btn { flex: 1; }
 
 /* Inputs */
-input[type="time"], input[type="text"], textarea, input[type="file"] {
+input[type="time"], input[type="text"], input[type="date"], textarea, input[type="file"] {
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -161,7 +164,7 @@ input[type="time"], input[type="text"], textarea, input[type="file"] {
   min-height: 46px;
 }
 textarea { resize: vertical; }
-input[type="time"] { color-scheme: dark; }
+input[type="time"], input[type="date"] { color-scheme: dark; }
 .field-label { font-size: 15px; margin-bottom: 8px; }
 .spacer { height: 16px; }
 
@@ -254,7 +257,8 @@ input[type="time"] { color-scheme: dark; }
 }
 
 /* Chrome draws the time picker icon in white. */
-input[type="time"]::-webkit-calendar-picker-indicator {
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(55%) sepia(6%) saturate(500%) brightness(90%);
   opacity: 0.7;
 }

@@ -29,7 +29,9 @@ Under that are two numbers — the **week score** (how it has been) and the
 grid of sleep, PEM, symptoms above baseline and demand above it. At the bottom is how
 long ago you last downloaded a backup.
 
-**Pot** is the reward tab, reached from Home like Evening and Morning.
+**RLHF** is the reward tab, and a permanent one. It holds the pot, the log of
+what earned it, a way to add a win you did not log at the time, and a record of
+what has been spent out of it.
 
 The **Evening** card only appears from 21:00. Before then Home offers a quiet
 line instead, so the screen is still one tap away — a card that only existed
@@ -159,8 +161,9 @@ and you can add your own.
 - **Hiding** stops an item being asked for and stops it counting toward the
   scores. Everything already recorded is kept and still exports — the CSV walks
   every key ever defined, not just the ones on screen today.
-- **Adding your own** takes a name, a scale (0-3 or no/yes) and where it
-  belongs: Symptoms, Exertion or Night. It then behaves like any other item —
+- **Adding your own** takes a name, a scale (0-3 or no/yes), where it belongs
+  (Symptoms, Exertion or Night) and its normal value, set right there in the
+  form rather than in a separate trip to Baselines. It then behaves like any other item —
   it gets a baseline, joins the matching score, appears in the chart picker and
   exports under its own name. Removing one keeps its history in the export.
 
@@ -186,7 +189,16 @@ all.
 
 The pot is **worked out from the log rather than banked**, so changing an
 amount re-prices every day already recorded. With the money switched off, wins
-are still logged and still counted; the tab becomes Wins and shows the count.
+are still logged and still counted, and the tab shows the count instead.
+
+**Spending** is recorded on the RLHF tab with an amount, a description and a
+date, and comes off the balance. Nothing stops the balance going negative — it
+is a record, not a lock. Purchases merge by id on restore, so restoring an old
+backup cannot wipe spending recorded since.
+
+**A win you did not log at the time** can be added to any past day from the
+same tab. It lands in that day's record like any other win, so it exports with
+everything else.
 
 **Did something well** on Home logs one with a single tap. The text is optional
 and comes after the tap, never before it, so a bad day still gets the tap.

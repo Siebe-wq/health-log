@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.13.0";
+var VERSION = "v1.14.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -105,15 +105,20 @@ var BUILTIN_SECTIONS = [
     { key: "breath", label: "Shortness of breath" },
     { key: "soreThroat", label: "Sore throat" },
     { key: "sweating", label: "Sweating / thermal dysregulation" },
-    { key: "hyper", label: "Hyper / sympathetic overdrive" }
+    { key: "hyper", label: "Hyper / sympathetic overdrive" },
+    { key: "mcas", label: "MCAS" }
   ]},
   { title: "Gut", items: [
     { key: "constipation", label: "Constipation" },
     { key: "diarrhea", label: "Diarrhea" },
     { key: "indigestion", label: "Post-dinner indigestion" }
   ]},
+  { title: "Anything else", items: [
+    { key: "other", label: "Other" }
+  ]},
   { title: "What the day asked of you", band: "Exertion", items: [
     { key: "physical", label: "Physically active" },
+    { key: "orthostatic", label: "Orthostatic exertion" },
     { key: "mental", label: "Mentally demanding" },
     { key: "social", label: "Socially demanding" },
     { key: "emotional", label: "Emotionally stressful" },
@@ -138,7 +143,7 @@ var EVENING_SECTIONS, EVENING_ITEMS, MORNING_ITEMS, ALL_ITEMS, ITEM_BY_KEY,
     EVENING_KEYS, ALL_KEYS, MORNING_KEYS, CARRY_KEYS,
     LOAD_KEYS, SCORE_ITEMS, DEMAND_ITEMS, MIN_SCORED, MIN_LOAD_ITEMS;
 
-var BUILTIN_LOAD_KEYS = ["physical", "mental", "social", "emotional", "pacing"];
+var BUILTIN_LOAD_KEYS = ["physical", "orthostatic", "mental", "social", "emotional", "pacing"];
 
 function customItems(band) {
   return (state.custom || []).filter(function (c) { return c.band === band; })
@@ -232,8 +237,9 @@ function exportNameFor(key) {
 var DEFAULT_BASELINES = {
   tired: 2, pem: 1, crash: 0, mood: 2, brainFog: 2, headache: 0, noise: 2,
   muscleAches: 1, muscleWeakness: 2, breath: 1, soreThroat: 0,
-  sweating: 0, hyper: 1, constipation: 0, diarrhea: 0, indigestion: 0,
-  physical: 1, mental: 1, social: 1, emotional: 0, pacing: 1,
+  sweating: 0, hyper: 1, mcas: 0, constipation: 0, diarrhea: 0, indigestion: 0,
+  other: 0,
+  physical: 1, orthostatic: 1, mental: 1, social: 1, emotional: 0, pacing: 1,
   sleep: 2, episode: 0, syncope: 0,
   /* Not a 0-3 rating: the hours you normally need. Only shortfall counts. */
   hoursTarget: 8
@@ -251,9 +257,11 @@ var EXPORT_NAME = {
   headache: "Headache", noise: "Noise sensitivity", muscleAches: "Muscle aches",
   muscleWeakness: "Muscle weakness", breath: "Shortness of breath",
   soreThroat: "Sore throat", sweating: "Sweating & thermal dysregulation",
-  hyper: "Hyper/sympathetic overdrive", constipation: "Constipation",
+  hyper: "Hyper/sympathetic overdrive", mcas: "MCAS", other: "Other",
+  constipation: "Constipation",
   diarrhea: "Diarrhea", indigestion: "Post-dinner indigestion",
-  physical: "Physically active", mental: "Mentally demanding",
+  physical: "Physically active", orthostatic: "Orthostatic exertion",
+  mental: "Mentally demanding",
   social: "Socially demanding", emotional: "Emotionally stressful",
   pacing: "Pacing (low = better)", sleep: "Sleep",
   episode: "Dysautonomic episode (0-5)", syncope: "Near-syncope",
@@ -266,9 +274,10 @@ var CATEGORY = {
   mood: "Emotional", brainFog: "Brain", headache: "Brain",
   noise: "Sensory", muscleAches: "Muscles", muscleWeakness: "Muscles",
   breath: "Heart and Lungs", soreThroat: "Pain", sweating: "Custom",
-  hyper: "Custom", constipation: "Gastrointestinal", diarrhea: "Gastrointestinal",
+  hyper: "Custom", mcas: "Custom", other: "Custom",
+  constipation: "Gastrointestinal", diarrhea: "Gastrointestinal",
   indigestion: "Gastrointestinal",
-  physical: "Physical", mental: "Cognitive", social: "Social",
+  physical: "Physical", orthostatic: "Physical", mental: "Cognitive", social: "Social",
   emotional: "Emotional", pacing: "Custom", sleep: "Sleep",
   episode: "Custom", syncope: "Custom", lastBite: "Custom", stomach: "Custom",
   sleepHours: "Sleep"
@@ -320,7 +329,8 @@ var state = {
   hidden: {},
   custom: [],
   retired: {},
-  pay: { on: true, win: 0.20, pacing1: 0.25, pacing0: 0.50 }
+  pay: { on: true, win: 0.20, pacing1: 0.25, pacing0: 0.50 },
+  purchases: []
 };
 
 /* Mood went from four points to five in v1.9.0, with neutral inserted in the
@@ -355,6 +365,7 @@ function loadStore() {
     state.custom = parsed.custom || [];
     state.retired = parsed.retired || {};
     state.pay = Object.assign({ on: true, win: 0.20, pacing1: 0.25, pacing0: 0.50 }, parsed.pay || {});
+    state.purchases = parsed.purchases || [];
     rebuildItems();
   } catch (e) {
     state.storeOk = false;
@@ -369,7 +380,8 @@ function saveNow() {
     localStorage.setItem(STORE_KEY, JSON.stringify({
       version: STORE_VERSION, days: state.days, baselines: state.baselines,
       lastBackupAt: state.lastBackupAt, chartKeys: state.chartKeys,
-      hidden: state.hidden, custom: state.custom, retired: state.retired, pay: state.pay
+      hidden: state.hidden, custom: state.custom, retired: state.retired, pay: state.pay,
+      purchases: state.purchases
     }));
     if (!state.storeOk) { state.storeOk = true; state.storeMsg = ""; renderBanner(); }
     flash("Saved");
@@ -407,7 +419,8 @@ function baselineValues() {
 function emptyEntry(date) {
   return {
     date: date, v: baselineValues(), touched: {},
-    lastBite: "", stomach: "", sleepHours: "", wins: [], tags: [], note: "", nightNote: "",
+    lastBite: "", stomach: "", sleepHours: "", wins: [], tags: [],
+    note: "", exertionNote: "", nightNote: "",
     complete: false, morningDone: false, savedAt: null, updatedAt: null
   };
 }
@@ -774,7 +787,8 @@ function payPacing(v) {
 }
 
 function euro(n) {
-  return "\u20ac" + n.toFixed(2);
+  /* The sign belongs in front of the symbol, not between it and the digits. */
+  return (n < 0 ? "\u2212\u20ac" : "\u20ac") + Math.abs(n).toFixed(2);
 }
 
 /* A day only pays for pacing you actually stood behind, so days that merely
@@ -796,10 +810,21 @@ function winTotal() {
   return n;
 }
 
-function potTotal() {
+function earnedTotal() {
   var total = 0;
   Object.keys(state.days).forEach(function (d) { total += dayPay(state.days[d]); });
   return total;
+}
+
+function spentTotal() {
+  var total = 0;
+  (state.purchases || []).forEach(function (x) { total += Number(x.amount) || 0; });
+  return total;
+}
+
+/* What is actually left to spend. */
+function potTotal() {
+  return earnedTotal() - spentTotal();
 }
 
 function logWin(date, text) {
@@ -809,6 +834,8 @@ function logWin(date, text) {
   });
   saveNow();
 }
+
+/* pendingMsg is declared with the History screen and reused here. */
 
 function removeWin(date, index) {
   update(date, function (e) {
@@ -825,22 +852,22 @@ function rewardsScreen() {
   dates.forEach(function (d) {
     var e = state.days[d];
     wins += winCount(e);
-    var p = pacingPay(e);
     if (itemCounts(e, "pacing") && e.v.pacing === 0) pacing0++;
     else if (itemCounts(e, "pacing") && e.v.pacing === 1) pacing1++;
   });
 
+  var money = state.pay.on;
   wrap.appendChild(el("div", { class: "score" }, [
-    el("div", { class: "score-label", text: state.pay.on ? "In the pot" : "Things done well" }),
+    el("div", { class: "score-label", text: money ? "In the pot" : "Things done well" }),
     el("div", { class: "score-head" }, [
-      el("span", { class: "score-num pot", text: state.pay.on ? euro(potTotal()) : String(wins) })
+      el("span", { class: "score-num pot", text: money ? euro(potTotal()) : String(wins) })
     ]),
-    el("div", { class: "score-cap", text: state.pay.on
-      ? "Everything logged so far"
-      : "Everything logged so far · paying for them is switched off in Baseline" })
+    el("div", { class: "score-cap", text: money
+      ? "Earned " + euro(earnedTotal()) + " · spent " + euro(spentTotal())
+      : "Paying for them is switched off in Baseline" })
   ]));
 
-  if (state.pay.on) wrap.appendChild(el("div", { class: "section" }, [
+  if (money) wrap.appendChild(el("div", { class: "section" }, [
     el("h2", { class: "section-head", text: "Where it came from" }),
     payLine(wins + (wins === 1 ? " thing done well" : " things done well"),
       wins + " × " + euro(state.pay.win), wins * payWin()),
@@ -850,15 +877,98 @@ function rewardsScreen() {
       pacing0 + " × " + euro(state.pay.pacing0), pacing0 * payPacing(0))
   ]));
 
+  if (pendingMsg) {
+    wrap.appendChild(el("div", { class: "msg", text: pendingMsg }));
+    pendingMsg = "";
+  }
+
+  /* ---- add one you did not log at the time ---- */
+  var addMsg = el("div", { class: "msg", style: { display: "none" } });
+  var winDate = el("input", { type: "date", value: today() });
+  var winText = el("input", { type: "text", placeholder: "What was it? (optional)" });
+  wrap.appendChild(el("h2", { class: "band", text: "Add one you missed" }));
+  wrap.appendChild(el("div", { class: "field-label", text: "Day" }));
+  wrap.appendChild(winDate);
+  wrap.appendChild(el("div", { class: "spacer" }));
+  wrap.appendChild(winText);
+  wrap.appendChild(el("div", { class: "spacer" }));
+  wrap.appendChild(el("button", { class: "btn wide raised", type: "button", text: "Add it to that day",
+    onclick: function () {
+      var d = winDate.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        addMsg.textContent = "Pick a day first."; addMsg.style.display = ""; return;
+      }
+      logWin(d, winText.value);
+      pendingMsg = "Added to " + pretty(d) + ".";
+      render();
+    }}));
+  wrap.appendChild(addMsg);
+
+  /* ---- spending ---- */
+  if (money) {
+    var buyAmount = el("input", { type: "number", step: "0.05", min: "0", inputmode: "decimal",
+      class: "hours-field", placeholder: "0.00" });
+    var buyText = el("input", { type: "text", placeholder: "What did you get?" });
+    var buyDate = el("input", { type: "date", value: today() });
+    var buyMsg = el("div", { class: "msg", style: { display: "none" } });
+    wrap.appendChild(el("h2", { class: "band", text: "Spend from it" }));
+    wrap.appendChild(el("div", { class: "field-label", text: "Amount (\u20ac)" }));
+    wrap.appendChild(buyAmount);
+    wrap.appendChild(el("div", { class: "spacer" }));
+    wrap.appendChild(buyText);
+    wrap.appendChild(el("div", { class: "spacer" }));
+    wrap.appendChild(buyDate);
+    wrap.appendChild(el("div", { class: "spacer" }));
+    wrap.appendChild(el("button", { class: "btn wide raised", type: "button", text: "Record it",
+      onclick: function () {
+        var amount = parseFloat(buyAmount.value);
+        if (isNaN(amount) || amount <= 0) {
+          buyMsg.textContent = "Put an amount in first."; buyMsg.style.display = ""; return;
+        }
+        state.purchases = (state.purchases || []).concat([{
+          id: "p" + Date.now().toString(36),
+          date: /^\d{4}-\d{2}-\d{2}$/.test(buyDate.value) ? buyDate.value : today(),
+          text: buyText.value, amount: Math.round(amount * 100) / 100
+        }]);
+        saveNow();
+        pendingMsg = "Recorded " + euro(amount) + ".";
+        render();
+      }}));
+    wrap.appendChild(buyMsg);
+    wrap.appendChild(el("div", { class: "note-line",
+      text: "Nothing stops you going over — it is a record, not a lock." }));
+
+    if ((state.purchases || []).length) {
+      wrap.appendChild(el("h2", { class: "section-head", text: "Spent" }));
+      state.purchases.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; })
+        .forEach(function (x) {
+          wrap.appendChild(el("div", { class: "day" }, [
+            el("div", { class: "line" }, [
+              el("span", { text: pretty(x.date) + (x.text ? " · " + x.text : "") }),
+              el("span", { class: "meta" }, [
+                el("span", { class: "day-pay", text: "\u2212" + euro(Number(x.amount)) })
+              ])
+            ]),
+            el("button", { class: "quiet-btn", type: "button", text: "remove",
+              onclick: function () {
+                state.purchases = state.purchases.filter(function (y) { return y.id !== x.id; });
+                saveNow(); render();
+              }})
+          ]));
+        });
+    }
+  }
+
+  /* ---- what was earned, day by day ---- */
   var earning = dates.filter(function (d) {
-    return state.pay.on ? dayPay(state.days[d]) > 0 : winCount(state.days[d]) > 0;
+    return money ? dayPay(state.days[d]) > 0 : winCount(state.days[d]) > 0;
   });
-  wrap.appendChild(el("h2", { class: "section-head", text: "Day by day" }));
+  wrap.appendChild(el("h2", { class: "band", text: "Day by day" }));
   if (earning.length === 0) {
     wrap.appendChild(el("div", { class: "hint",
-      text: state.pay.on
-        ? "Nothing yet. Tap “Did something well” on Home, or log a day paced at 1 or 0."
-        : "Nothing yet. Tap “Did something well” on Home." }));
+      text: money
+        ? "Nothing yet. Tap \u201cDid something well\u201d on Home, or log a day paced at 1 or 0."
+        : "Nothing yet. Tap \u201cDid something well\u201d on Home." }));
   }
   earning.forEach(function (d) {
     var e = state.days[d];
@@ -871,12 +981,12 @@ function rewardsScreen() {
         el("span", { text: pretty(d) }),
         el("span", { class: "meta" }, [
           el("span", { text: bits.join(" · ") }),
-          state.pay.on ? el("span", { class: "day-pay", text: euro(dayPay(e)) }) : null
+          money ? el("span", { class: "day-pay", text: euro(dayPay(e)) }) : null
         ])
       ])
     ]);
     (e.wins || []).forEach(function (w) {
-      if (w.text) row.appendChild(el("div", { class: "win-text", text: "“" + w.text + "”" }));
+      if (w.text) row.appendChild(el("div", { class: "win-text", text: "\u201c" + w.text + "\u201d" }));
     });
     wrap.appendChild(row);
   });
@@ -1580,39 +1690,43 @@ function homeScreen() {
   due.forEach(function (c) { wrap.appendChild(c); });
   later.forEach(function (c) { wrap.appendChild(c); });
 
-  /* Something done well. One tap logs it; the text is optional and comes
-     after, so a bad day still gets the tap. Nothing blocks. */
-  var todayEntry = state.days[t];
+  /* Something done well. One tap logs it; the description is optional and
+     comes after, so a bad day still gets the tap. The box repaints itself
+     rather than leaning on a full re-render, so the field is there the moment
+     the first one is logged. */
   var winBox = el("div", { class: "win-box" });
-  var winMsg = el("div", { class: "win-added", style: { display: "none" } });
-  var winBtn = el("button", { class: "btn wide win-btn", type: "button",
-    text: "Did something well" });
-  winBtn.addEventListener("click", function () {
-    logWin(t);
-    render();
-    flash(state.pay.on ? "Logged · " + euro(payWin()) : "Logged");
-  });
-  winBox.appendChild(winBtn);
+  function paintWins() {
+    winBox.innerHTML = "";
+    winBox.appendChild(el("button", { class: "btn wide win-btn", type: "button",
+      text: "Did something well",
+      onclick: function () {
+        logWin(t);
+        paintWins();
+        var field = winBox.querySelector(".win-input");
+        if (field) field.focus();
+        flash(state.pay.on ? "Logged · " + euro(payWin()) : "Logged");
+      }}));
 
-  var count = winCount(state.days[t]);
-  if (count) {
-    var last = state.days[t].wins.length - 1;
-    var note = el("input", { type: "text", class: "win-input",
-      placeholder: "What was it? (optional)" });
-    note.value = state.days[t].wins[last].text || "";
+    var wins = (state.days[t] && state.days[t].wins) || [];
+    if (!wins.length) return;
+    var last = wins.length - 1;
+    winBox.appendChild(el("div", { class: "field-label", text: "What was it? (optional)" }));
+    var note = el("input", { type: "text", class: "win-input", placeholder: "Say it in a few words" });
+    note.value = wins[last].text || "";
     note.addEventListener("input", function () {
       update(t, function (e) { e.wins[last].text = note.value; });
       saveSoon();
     });
-    winMsg.style.display = "";
-    winMsg.appendChild(el("span", {
-      text: count + (count === 1 ? " thing" : " things") + " today"
-        + (state.pay.on ? " · " + euro(count * payWin()) : "") }));
-    winMsg.appendChild(el("button", { class: "win-undo", type: "button", text: "remove last",
-      onclick: function () { removeWin(t, last); render(); } }));
     winBox.appendChild(note);
-    winBox.appendChild(winMsg);
+    var line = el("div", { class: "win-added" }, [
+      el("span", { text: wins.length + (wins.length === 1 ? " thing" : " things") + " today"
+        + (state.pay.on ? " · " + euro(wins.length * payWin()) : "") }),
+      el("button", { class: "win-undo", type: "button", text: "remove last",
+        onclick: function () { removeWin(t, last); paintWins(); } })
+    ]);
+    winBox.appendChild(line);
   }
+  paintWins();
   wrap.appendChild(winBox);
 
   /* The note written for yourself last night. */
@@ -1630,7 +1744,7 @@ function homeScreen() {
   wrap.appendChild(pacingRow());
   done.forEach(function (c) { wrap.appendChild(c); });
   wrap.appendChild(el("button", { class: "pot-line", type: "button",
-    onclick: function () { state.tab = "rewards"; render(); } }, [
+    onclick: function () { state.tab = "rlhf"; render(); } }, [
     el("span", { text: state.pay.on ? "In the pot" : "Things done well" }),
     el("span", { class: "pot-amount", text: state.pay.on ? euro(potTotal()) : String(winTotal()) })
   ]));
@@ -1711,6 +1825,17 @@ function eveningScreen() {
     update(date, function (e) { e.lastBite = bite.value; });
     saveSoon(200);
   });
+  if (EVENING_SECTIONS.some(function (sec) { return sec.band === "Exertion"; })) {
+    var exNote = el("textarea", { rows: "2",
+      placeholder: "Which bits took it out of you?" });
+    exNote.value = entry.exertionNote || "";
+    exNote.addEventListener("input", function () {
+      update(date, function (e) { e.exertionNote = exNote.value; });
+      saveSoon();
+    });
+    wrap.appendChild(section("What it was (optional)", [exNote]));
+  }
+
   /* Neither a symptom nor something the day asked of you, so it gets its own
      band rather than sitting under Exertion by accident. */
   wrap.appendChild(el("h2", { class: "band", text: "Bedtime and notes" }));
@@ -1901,7 +2026,7 @@ function baselineScreen() {
   }
 
   /* ---- add your own ---- */
-  var draft = { label: "", max: 3, band: "symptoms" };
+  var draft = { label: "", max: 3, band: "symptoms", base: 0 };
   var addMsg = el("div", { class: "msg", style: { display: "none" } });
   var nameField = el("input", { type: "text", placeholder: "Name it" });
   nameField.addEventListener("input", function () { draft.label = nameField.value; });
@@ -1926,12 +2051,27 @@ function baselineScreen() {
   wrap.appendChild(nameField);
   wrap.appendChild(el("div", { class: "field-label", text: "Scale" }));
   wrap.appendChild(chipRow([{ label: "0-3", value: 3 }, { label: "no / yes", value: 1 }],
-    function () { return draft.max; }, function (v) { draft.max = v; }));
+    function () { return draft.max; },
+    function (v) { draft.max = v; if (draft.base > v) draft.base = v; paintBase(); }));
   wrap.appendChild(el("div", { class: "field-label", text: "Where it belongs" }));
   wrap.appendChild(chipRow(
     [{ label: "Symptoms", value: "symptoms" }, { label: "Exertion", value: "exertion" },
      { label: "Night", value: "night" }],
     function () { return draft.band; }, function (v) { draft.band = v; }));
+  var baseHost = el("div");
+  function paintBase() {
+    baseHost.innerHTML = "";
+    baseHost.appendChild(el("div", { class: "field-label", text: "Its normal value" }));
+    var row = ratingRow({ key: "draft", label: "Baseline", max: draft.max,
+        labels: draft.max === 1 ? ["no", "yes"] : undefined },
+      function () { return draft.base; },
+      function (n) { draft.base = n; },
+      null);
+    baseHost.appendChild(row.el);
+  }
+  paintBase();
+  wrap.appendChild(baseHost);
+
   wrap.appendChild(el("button", { class: "btn wide raised", type: "button", text: "Add it",
     onclick: function () {
       var label = (draft.label || "").trim();
@@ -1939,11 +2079,11 @@ function baselineScreen() {
       var key = "c" + Date.now().toString(36);
       state.custom = (state.custom || []).concat([
         { key: key, label: label, max: draft.max, band: draft.band }]);
-      state.baselines[key] = 0;
+      state.baselines[key] = draft.base;
       saveNow(); rebuildItems(); render(true);
     }}));
   wrap.appendChild(el("div", { class: "note-line",
-    text: "It starts at baseline 0. Set its normal in Baselines above." }));
+    text: "It joins Baselines above too, so the normal can be changed later." }));
   wrap.appendChild(addMsg);
 
   /* ---- rewards ---- */
@@ -1992,7 +2132,7 @@ function backupJson() {
   return JSON.stringify({
     app: "daily-log", version: STORE_VERSION, exportedAt: new Date().toISOString(),
     baselines: state.baselines, hidden: state.hidden, custom: state.custom,
-    retired: state.retired, pay: state.pay, days: state.days
+    retired: state.retired, pay: state.pay, purchases: state.purchases, days: state.days
   }, null, 2);
 }
 
@@ -2021,6 +2161,7 @@ function backupCsv() {
       rows.push([d, "Done well", "Custom", w.text || "logged", ""]);
     });
     if (e.tags && e.tags.length) rows.push([d, "Tags", "Note", e.tags.join("|"), ""]);
+    if (e.exertionNote) rows.push([d, "Exertion note", "Note", e.exertionNote, ""]);
     if (e.note) rows.push([d, "Note", "Note", e.note, ""]);
     if (e.nightNote) rows.push([d, "Night note", "Note", e.nightNote, ""]);
   });
@@ -2062,6 +2203,13 @@ function restore(parsed) {
   if (parsed.hidden) state.hidden = parsed.hidden;
   if (parsed.retired) state.retired = parsed.retired;
   if (parsed.pay) state.pay = Object.assign({}, state.pay, parsed.pay);
+  /* Purchases are a flat list, so merge by id rather than replacing: restoring
+     an older backup must not wipe spending recorded since. */
+  if (parsed.purchases) {
+    var have = {};
+    (state.purchases || []).forEach(function (x) { have[x.id] = true; });
+    parsed.purchases.forEach(function (x) { if (!have[x.id]) state.purchases.push(x); });
+  }
   rebuildItems();
   saveNow();
   return { added: added, updated: updated, kept: kept };
@@ -2170,14 +2318,13 @@ function historyScreen() {
 
 /* Evening and Morning are not permanent tabs. You reach them from Home, and
    the tab only appears while you are on one, so there is a way back. */
-var TABS = [["home", "Home"], ["history", "History"], ["baseline", "Baseline"]];
+var TABS = [["home", "Home"], ["rlhf", "RLHF"], ["history", "History"], ["baseline", "Baseline"]];
 
 function renderTabs() {
   var nav = document.getElementById("tabs");
   nav.innerHTML = "";
   var tabs = TABS.slice();
   if (state.tab === "evening") tabs.splice(1, 0, ["evening", "Evening"]);
-  if (state.tab === "rewards") tabs.splice(1, 0, ["rewards", state.pay.on ? "Pot" : "Wins"]);
   if (state.tab === "detail") tabs.splice(1, 0, ["detail", "Score"]);
   if (state.tab === "morning") tabs.splice(1, 0, ["morning", "Morning"]);
   tabs.forEach(function (t) {
@@ -2207,7 +2354,7 @@ function render(keepScroll) {
   if (state.tab === "home") main.appendChild(homeScreen());
   else if (state.tab === "evening") main.appendChild(eveningScreen());
   else if (state.tab === "morning") main.appendChild(morningScreen());
-  else if (state.tab === "rewards") main.appendChild(rewardsScreen());
+  else if (state.tab === "rlhf") main.appendChild(rewardsScreen());
   else if (state.tab === "detail") main.appendChild(detailScreen());
   else if (state.tab === "baseline") main.appendChild(baselineScreen());
   else main.appendChild(historyScreen());
