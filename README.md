@@ -42,7 +42,7 @@ and the tab appears only while you are on one, so there is a way back.
 
 **History** is the full list of days, plus the backup buttons.
 
-**Baseline** is your normal value for each of the 24 rated items. Hours slept has no baseline.
+**Baseline** is your normal value for each of the 24 rated items, plus the hours of sleep you normally need.
 
 ## Putting it on the phone
 
@@ -107,6 +107,27 @@ GitHub Pages takes about a minute to publish after a push. After that:
   you open it online.
 
 So: yes, it updates itself, but only when opened online, and never mid-entry.
+
+## The score panels
+
+Tapping either number on Home opens its own panel: the score over the last
+fourteen days, and what is behind the current figure.
+
+The breakdown is **exact, not an illustration**. Both scores are a weighted
+mean of daily burdens, and each daily burden is a plain mean over the items
+counted that day, which decomposes: an item's share is the same weighted mean
+of its own burden divided by the number of items counted alongside it. Those
+shares sum to the burden the score is built from — verified to nine decimal
+places by a test, not by eye. The only gap you will see on screen is the
+rounding of the score itself to a whole number.
+
+Each row carries the last seven days of what you actually entered, newest on
+the right, coloured the same way the rest of the app colours that item. Items
+sitting at or better than baseline are named in one line at the bottom rather
+than given rows of their own.
+
+The panel's day weights are derived from the same half life the score uses
+rather than copied, so the two cannot drift apart.
 
 ## The pot
 
@@ -247,14 +268,27 @@ Baseline screen.
 ## Hours slept
 
 Recorded on the Morning screen with half hour steps, so it needs no keyboard in
-the dark, and the field still takes a typed number. It is stored and exported
-but **does not feed the PEM predictor**: it has no baseline to compare against,
-and hours in bed is a poor proxy when you are lying down most of the day.
-Sleep quality carries that job. Once there is a few months of data it would be
-worth checking whether hours adds anything.
+the dark, and the field still takes a typed number.
+
+Since v1.10.0 it feeds the PEM predictor, but **it shares one component with
+sleep quality rather than counting as a seventh item**. Quality and hours are
+two readings of the same night; giving each its own slot would have quietly
+doubled what sleep is worth in that score. The component is the average of the
+two burdens, or whichever one is present. Leaving hours blank costs nothing.
+
+The reference is **hours you normally need**, set at the bottom of the Baseline
+screen and starting at 8. Only sleeping short of it counts:
+
+```
+burden = (target − hours) / target, clamped to 0..1
+```
+
+Sleeping longer than target scores 0 rather than earning credit, the same as
+every other item. Nothing penalises a long night, which in ME/CFS can mean
+either recovery or a crash — the app does not pretend to know which.
 
 It exports as `Sleep hours`. The 0-3 rating still exports as `Sleep`, the name
-your Visible history uses, even though the screen now labels it Sleep quality.
+your Visible history uses, even though the screen labels it Sleep quality.
 
 ## Notifications
 

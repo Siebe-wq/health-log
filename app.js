@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.9.0";
+var VERSION = "v1.10.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -48,6 +48,8 @@ var VAL = {
    each slot also owns a dash pattern, and every point carries a dot. A fourth
    hue muted enough for this screen collapses into one of these (a purple I
    tried sat ΔE 0.5 from the blue under deuteranopia — indistinguishable). */
+var SERIES_DETAIL = { week: "#C4714C", pem: "#8FB6E0" };
+
 var SLOTS = [
   { colour: "#C4714C", dash: "" },
   { colour: "#8FB6E0", dash: "6 3" },
@@ -98,7 +100,7 @@ var EVENING_SECTIONS = [
     { key: "noise", label: "Noise sensitivity" }
   ]},
   { title: "Body", items: [
-    { key: "muscleAches", label: "Muscle aches" },
+    { key: "muscleAches", label: "Muscle burn" },
     { key: "muscleWeakness", label: "Muscle weakness" },
     { key: "breath", label: "Shortness of breath" },
     { key: "soreThroat", label: "Sore throat" },
@@ -138,7 +140,9 @@ var DEFAULT_BASELINES = {
   muscleAches: 1, muscleWeakness: 2, breath: 1, soreThroat: 0,
   sweating: 0, hyper: 1, constipation: 0, diarrhea: 0, indigestion: 0,
   physical: 1, mental: 1, social: 1, emotional: 0, pacing: 1,
-  sleep: 2, episode: 0, syncope: 0
+  sleep: 2, episode: 0, syncope: 0,
+  /* Not a 0-3 rating: the hours you normally need. Only shortfall counts. */
+  hoursTarget: 8
 };
 
 var TAGS = ["episode", "visitor", "extra med", "bad night", "GI", "heat", "appointment"];
@@ -217,7 +221,8 @@ var state = {
   storeOk: true,
   storeMsg: "",
   lastBackupAt: null,
-  chartKeys: ["symptoms", "exertion"]
+  chartKeys: ["symptoms", "exertion"],
+  detail: "week"
 };
 
 /* Mood went from four points to five in v1.9.0, with neutral inserted in the
@@ -287,9 +292,17 @@ function flash(text) {
 
 /* ---------- entries ---------- */
 
+/* Only the rated items — state.baselines also carries hoursTarget, which is a
+   setting rather than a value a day can hold. */
+function baselineValues() {
+  var v = {};
+  ALL_KEYS.forEach(function (k) { v[k] = state.baselines[k]; });
+  return v;
+}
+
 function emptyEntry(date) {
   return {
-    date: date, v: Object.assign({}, state.baselines), touched: {},
+    date: date, v: baselineValues(), touched: {},
     lastBite: "", stomach: "", sleepHours: "", wins: [], tags: [], note: "", nightNote: "",
     complete: false, morningDone: false, savedAt: null, updatedAt: null
   };
@@ -392,6 +405,40 @@ function ratingRow(item, getValue, setValue, baselineOf, onAfter) {
   return { el: el("div", { class: "row" }, [label, opts]), refresh: refresh };
 }
 
+/* Half hour steps so it needs no keyboard in the dark; the field still takes a
+   typed number. Used by the Morning screen and by the Baseline screen. */
+function hoursStepper(get, set, opts) {
+  opts = opts || {};
+  var field = el("input", { type: "number", step: "0.5", min: "0", max: "24",
+    inputmode: "decimal", class: "hours-field", placeholder: opts.placeholder || "\u2013" });
+  var cur = get();
+  field.value = cur === undefined || cur === null ? "" : cur;
+
+  function write(v) {
+    var n = v === "" ? "" : Math.max(0, Math.min(24, Math.round(parseFloat(v) * 2) / 2));
+    if (n !== "" && isNaN(n)) n = "";
+    if (n === "" && opts.required) n = get();
+    field.value = n;
+    set(n);
+    saveSoon(200);
+  }
+  field.addEventListener("change", function () { write(field.value); });
+
+  function step(by) {
+    /* From blank the first press lands on the anchor, not anchor plus a step. */
+    var v = parseFloat(field.value);
+    write(isNaN(v) ? (opts.anchor === undefined ? 8 : opts.anchor) : v + by);
+    saveNow();
+  }
+  return el("div", { class: "stepper" }, [
+    el("button", { class: "btn", type: "button", text: "\u2212", "aria-label": "Half an hour less",
+      onclick: function () { step(-0.5); } }),
+    field,
+    el("button", { class: "btn", type: "button", text: "+", "aria-label": "Half an hour more",
+      onclick: function () { step(0.5); } })
+  ]);
+}
+
 /* ---------- date navigation ---------- */
 
 function dateNav(getDate, setDate, caption) {
@@ -482,14 +529,41 @@ var DEMAND_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.ke
 var LOAD_ITEMS = DEMAND_ITEMS.concat([ITEM_BY_KEY.sleep]);
 var MIN_LOAD_ITEMS = 3;
 
+/* Hours short of the hours you normally need, as 0..1. Sleeping longer than
+   target scores 0 rather than earning credit, the same as every other item.
+   A blank is not a zero — it is no reading at all. */
+function hoursBurden(entry) {
+  var h = entry.sleepHours;
+  if (h === "" || h === undefined || h === null) return null;
+  var target = state.baselines.hoursTarget || DEFAULT_BASELINES.hoursTarget;
+  if (!target) return null;
+  return Math.max(0, Math.min(1, (target - Number(h)) / target));
+}
+
+/* Quality and hours are two readings of the same night, so they share one
+   component rather than counting as two of the six. Otherwise adding hours
+   would quietly double what sleep is worth in this score. Average the two
+   when both are there; fall back to whichever one is. */
+function sleepComponent(entry) {
+  var quality = itemCounts(entry, "sleep")
+    ? itemBurden(ITEM_BY_KEY.sleep, entry.v.sleep, state.baselines.sleep)
+    : null;
+  var hours = nightIsLogged(entry) ? hoursBurden(entry) : null;
+  if (quality === null) return hours;
+  if (hours === null) return quality;
+  return (quality + hours) / 2;
+}
+
 function loadBurden(entry) {
   if (!entry) return null;
   var sum = 0, n = 0;
-  LOAD_ITEMS.forEach(function (it) {
+  DEMAND_ITEMS.forEach(function (it) {
     if (!itemCounts(entry, it.key)) return;
     var b = itemBurden(it, entry.v[it.key], state.baselines[it.key]);
     if (b !== null) { sum += b; n++; }
   });
+  var sleep = sleepComponent(entry);
+  if (sleep !== null) { sum += sleep; n++; }
   return n < MIN_LOAD_ITEMS ? null : sum / n;
 }
 
@@ -665,6 +739,236 @@ function payLine(label, sum, amount) {
   ]);
 }
 
+/* ---------- score detail ---------- */
+
+/* Both scores are a weighted mean of daily burdens, and each daily burden is a
+   plain mean over the items counted that day. That decomposes exactly: an
+   item's share is the same weighted mean of its own burden divided by the
+   number of items counted alongside it, and the shares add up to the points
+   the score is down. Nothing here is an approximation of the number on Home. */
+function contributions(kind) {
+  var t = today();
+  /* Derived from the same half life weekScore uses, rather than copied, so the
+     two can never drift apart. */
+  var weights = LOAD_WEIGHTS;
+  if (kind !== "pem") {
+    weights = [];
+    for (var k = 0; k < 7; k++) weights.push(Math.pow(0.5, k / 3));
+  }
+  var contrib = {}, totalWeight = 0, daysUsed = 0;
+
+  for (var i = 0; i < weights.length; i++) {
+    var e = state.days[shiftDay(t, -i)];
+    if (!e) continue;
+    var parts = [];
+    if (kind === "pem") {
+      DEMAND_ITEMS.forEach(function (it) {
+        if (!itemCounts(e, it.key)) return;
+        var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
+        if (b !== null) parts.push({ key: it.key, label: it.label, burden: b });
+      });
+      var sleep = sleepComponent(e);
+      if (sleep !== null) parts.push({ key: "sleep", label: "Sleep quality and hours", burden: sleep });
+      if (parts.length < MIN_LOAD_ITEMS) continue;
+    } else {
+      SCORE_ITEMS.forEach(function (it) {
+        if (!itemCounts(e, it.key)) return;
+        var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
+        if (b !== null) parts.push({ key: it.key, label: it.label, burden: b });
+      });
+      if (parts.length < MIN_SCORED) continue;
+    }
+    var w = weights[i];
+    totalWeight += w;
+    daysUsed++;
+    parts.forEach(function (p) {
+      if (!contrib[p.key]) contrib[p.key] = { key: p.key, label: p.label, points: 0 };
+      contrib[p.key].points += w * p.burden / parts.length;
+    });
+  }
+
+  var rows = Object.keys(contrib).map(function (k) {
+    contrib[k].points = totalWeight ? 100 * contrib[k].points / totalWeight : 0;
+    return contrib[k];
+  });
+  rows.sort(function (a, b) { return b.points - a.points; });
+  return { rows: rows, days: daysUsed };
+}
+
+/* The score itself, recomputed as it stood at the end of each of the last
+   fourteen days. */
+function scoreHistory(kind) {
+  var t = today(), out = [];
+  for (var i = 13; i >= 0; i--) {
+    var d = shiftDay(t, -i);
+    var r = kind === "pem" ? pemRisk(d) : weekScore(d);
+    out.push({ date: d, value: kind === "pem" ? r.risk : r.score });
+  }
+  return out;
+}
+
+/* One line, fourteen points, fixed 0-100. A single series needs no legend —
+   the heading above it says what it is. */
+function detailChart(points, colour) {
+  var W = 320, H = 100, padL = 6, padR = 6, padT = 10, padB = 10;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+  var x = function (i) { return padL + (plotW * i) / (points.length - 1); };
+  var y = function (v) { return padT + plotH * (1 - v / 100); };
+  var ns = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("class", "chart");
+  function node(name, attrs) {
+    var n = document.createElementNS(ns, name);
+    Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    return n;
+  }
+  [0, 50, 100].forEach(function (v) {
+    svg.appendChild(node("line", { x1: padL, x2: padL + plotW, y1: y(v), y2: y(v),
+      stroke: "#252D36", "stroke-width": v === 0 ? 1 : 0.5 }));
+  });
+  var run = [];
+  function flush() {
+    if (run.length > 1) {
+      svg.appendChild(node("path", { d: "M" + run.map(function (p) { return p[0] + " " + p[1]; }).join("L"),
+        fill: "none", stroke: colour, "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+    }
+    run = [];
+  }
+  points.forEach(function (p, i) {
+    if (p.value === null) { flush(); return; }
+    run.push([x(i), y(p.value)]);
+  });
+  flush();
+  points.forEach(function (p, i) {
+    if (p.value === null) return;
+    svg.appendChild(node("circle", { cx: x(i), cy: y(p.value), r: 3, fill: colour,
+      stroke: "#171C22", "stroke-width": 1.2 }));
+  });
+  return svg;
+}
+
+/* Seven cells of what you actually entered for one item. */
+function itemStrip(key) {
+  var t = today();
+  var strip = el("div", { class: "mini-strip" });
+  for (var i = 6; i >= 0; i--) {
+    (function (i) {
+      var d = shiftDay(t, -i);
+      var e = state.days[d];
+      var text = "\u2013", fill = VAL.none;
+      if (e && itemCounts(e, key) && e.v[key] !== undefined) {
+        var item = ITEM_BY_KEY[key];
+        var base = state.baselines[key];
+        text = item.labels ? item.labels[e.v[key]].slice(0, 4) : String(e.v[key]);
+        fill = key === "pacing"
+          ? PACING_RAMP[Math.min(e.v[key], PACING_RAMP.length - 1)]
+          : valenceFill(item.higherIsBetter ? base - e.v[key] : e.v[key] - base);
+      }
+      var cell = el("div", { class: "mini-cell" + (fill === VAL.none ? " empty" : ""), text: text });
+      if (fill !== VAL.none) { cell.style.background = fill; cell.style.color = INK[fill]; }
+      strip.appendChild(cell);
+    })(i);
+  }
+  return strip;
+}
+
+function detailScreen() {
+  var kind = state.detail === "pem" ? "pem" : "week";
+  var t = today();
+  var wrap = el("div");
+  var now = kind === "pem" ? pemRisk(t) : weekScore(t);
+  var value = kind === "pem" ? now.risk : now.score;
+
+  var band;
+  if (value === null) band = ["#77828E", "not enough logged days yet"];
+  else if (kind === "pem") {
+    band = value <= 20 ? ["#6FAF87", "low"] : value <= 40 ? ["#C6CED6", "raised"] : ["#D08A6B", "high"];
+  } else {
+    band = value >= 85 ? ["#6FAF87", "at or near your normal"]
+      : value >= 70 ? ["#C6CED6", "somewhat below your normal"] : ["#D08A6B", "well below your normal"];
+  }
+
+  var head = el("div", { class: "score-head" }, [
+    el("span", { class: "score-num", text: value === null ? "\u2013" : String(value) }),
+    el("span", { class: "score-band", text: band[1] })
+  ]);
+  head.querySelector(".score-num").style.color = band[0];
+  wrap.appendChild(el("div", { class: "score" }, [
+    el("div", { class: "score-label", text: kind === "pem" ? "PEM predictor" : "Week score" }),
+    head,
+    el("div", { class: "score-cap", text: kind === "pem"
+      ? "Six things over four days, weighted so today and yesterday count most. Higher is a warning."
+      : "Symptoms against your own baseline over seven days, recent days weighted. Higher is better." })
+  ]));
+
+  wrap.appendChild(el("h2", { class: "section-head panel-head", text: "Last 14 days" }));
+  wrap.appendChild(detailChart(scoreHistory(kind), kind === "pem" ? SERIES_DETAIL.pem : SERIES_DETAIL.week));
+  wrap.appendChild(el("div", { class: "strip-cap", text: "0-100, same scale as the number above" }));
+
+  var made = contributions(kind);
+  wrap.appendChild(el("h2", { class: "section-head panel-head",
+    text: kind === "pem" ? "What is driving it" : "Where the points went" }));
+
+  if (made.rows.length === 0) {
+    wrap.appendChild(el("div", { class: "hint", text: "Nothing logged recently enough to break down." }));
+  } else {
+    var carrying = made.rows.filter(function (r) { return r.points >= 0.05; });
+    var clear = made.rows.filter(function (r) { return r.points < 0.05; });
+    var worst = carrying.length ? carrying[0].points : 1;
+
+    carrying.forEach(function (r) {
+      var bar = el("div", { class: "contrib-bar" });
+      var fill = el("div", { class: "contrib-fill" });
+      fill.style.width = Math.max(2, Math.round(100 * r.points / worst)) + "%";
+      fill.style.background = kind === "pem" ? SERIES_DETAIL.pem : SERIES_DETAIL.week;
+      bar.appendChild(fill);
+      var row = el("div", { class: "contrib" }, [
+        el("div", { class: "contrib-top" }, [
+          el("span", { text: r.label }),
+          el("span", { class: "contrib-points",
+            text: (kind === "pem" ? "+" : "\u2212") + r.points.toFixed(1) })
+        ]),
+        bar
+      ]);
+      if (r.key === "sleep" && kind === "pem") {
+        row.appendChild(el("div", { class: "contrib-note", text: sleepNote() }));
+        row.appendChild(itemStrip("sleep"));
+      } else {
+        row.appendChild(itemStrip(r.key));
+      }
+      wrap.appendChild(row);
+    });
+
+    if (clear.length) {
+      wrap.appendChild(el("div", { class: "hint", text: "At baseline or better: " +
+        clear.map(function (r) { return r.label; }).join(", ") }));
+    }
+    wrap.appendChild(el("div", { class: "strip-cap",
+      text: "Cells are the last 7 days of what you entered, newest on the right. The figures add up to the "
+        + (kind === "pem" ? "score" : "points below 100") + ", give or take rounding." }));
+  }
+
+  wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
+    onclick: function () { state.tab = "home"; render(); } }));
+  return wrap;
+}
+
+function sleepNote() {
+  var t = today(), sum = 0, n = 0;
+  for (var i = 0; i < 7; i++) {
+    var e = state.days[shiftDay(t, -i)];
+    if (!e || !nightIsLogged(e)) continue;
+    var h = e.sleepHours;
+    if (h === "" || h === undefined || h === null) continue;
+    sum += Number(h); n++;
+  }
+  var target = state.baselines.hoursTarget || DEFAULT_BASELINES.hoursTarget;
+  return n
+    ? "Target " + target + "h · last " + n + (n === 1 ? " night " : " nights ") + (sum / n).toFixed(1) + "h"
+    : "Target " + target + "h · no hours logged yet";
+}
+
 /* ---------- home ---------- */
 
 /* The hour the evening card appears. */
@@ -708,7 +1012,8 @@ function doneLine(text, onclick) {
 function scoreTile() {
   var t = today();
   var now = weekScore(t);
-  var box = el("div", { class: "score" });
+  var box = el("button", { class: "score tappable", type: "button",
+    onclick: function () { state.detail = "week"; state.tab = "detail"; render(); } });
   if (now.score === null) {
     box.appendChild(el("div", { class: "score-label", text: "Week score" }));
     box.appendChild(el("div", { class: "score-wait",
@@ -734,6 +1039,7 @@ function scoreTile() {
       " the week before · " + line;
   }
   box.appendChild(el("div", { class: "score-cap", text: line }));
+  box.appendChild(el("span", { class: "tap-hint", text: "what is behind this" }));
   return box;
 }
 
@@ -741,7 +1047,8 @@ function scoreTile() {
 function pemTile() {
   var t = today();
   var now = pemRisk(t);
-  var box = el("div", { class: "score" });
+  var box = el("button", { class: "score tappable", type: "button",
+    onclick: function () { state.detail = "pem"; state.tab = "detail"; render(); } });
   box.appendChild(el("div", { class: "score-label", text: "PEM predictor" }));
   if (now.risk === null) {
     box.appendChild(el("div", { class: "score-wait",
@@ -769,6 +1076,7 @@ function pemTile() {
   }
   box.appendChild(el("div", { class: "score-cap",
     text: reading + " · 6 items over 4 days, a rule of thumb" }));
+  box.appendChild(el("span", { class: "tap-hint", text: "what is behind this" }));
   return box;
 }
 
@@ -1336,34 +1644,11 @@ function morningScreen() {
     wrap.appendChild(row.el);
   });
 
-  /* Hours slept. Half hour steps on the buttons so it needs no keyboard in the
-     dark; the field still takes a typed number if you want to be exact. */
-  var hours = el("input", { type: "number", step: "0.5", min: "0", max: "24",
-    inputmode: "decimal", class: "hours-field", placeholder: "–" });
-  hours.value = entry.sleepHours === undefined || entry.sleepHours === null ? "" : entry.sleepHours;
-  function writeHours(v) {
-    var n = v === "" ? "" : Math.max(0, Math.min(24, Math.round(parseFloat(v) * 2) / 2));
-    if (n !== "" && isNaN(n)) n = "";
-    hours.value = n;
-    update(date, function (e) { e.sleepHours = n; });
-    saveSoon(200);
-  }
-  hours.addEventListener("change", function () { writeHours(hours.value); });
-  function step(by) {
-    /* From blank, the first press lands on 8 rather than 8.5 — it is a
-       starting point to adjust from, not an increment. */
-    var cur = parseFloat(hours.value);
-    writeHours(isNaN(cur) ? 8 : cur + by);
-    saveNow();
-  }
   wrap.appendChild(section("Hours slept", [
-    el("div", { class: "stepper" }, [
-      el("button", { class: "btn", type: "button", text: "−", "aria-label": "Half an hour less",
-        onclick: function () { step(-0.5); } }),
-      hours,
-      el("button", { class: "btn", type: "button", text: "+", "aria-label": "Half an hour more",
-        onclick: function () { step(0.5); } })
-    ]),
+    hoursStepper(
+      function () { return getEntry(date).sleepHours; },
+      function (n) { update(date, function (e) { e.sleepHours = n; }); }
+    ),
     el("div", { class: "note-line", text: "Time asleep, not time lying down. Leave it blank if you have no idea." })
   ]));
 
@@ -1396,6 +1681,16 @@ function baselineScreen() {
       null);
     wrap.appendChild(row.el);
   });
+  wrap.appendChild(section("Hours you normally need", [
+    hoursStepper(
+      function () { return state.baselines.hoursTarget; },
+      function (n) { state.baselines.hoursTarget = n === "" ? DEFAULT_BASELINES.hoursTarget : n; },
+      { anchor: 8, required: true }
+    ),
+    el("div", { class: "note-line",
+      text: "Only sleeping short of this counts against the PEM predictor. Sleeping longer is not scored either way." })
+  ]));
+
   wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
     onclick: function () { state.tab = "home"; render(); } }));
   wrap.appendChild(el("div", { class: "note-line",
@@ -1586,6 +1881,7 @@ function renderTabs() {
   var tabs = TABS.slice();
   if (state.tab === "evening") tabs.splice(1, 0, ["evening", "Evening"]);
   if (state.tab === "rewards") tabs.splice(1, 0, ["rewards", "Pot"]);
+  if (state.tab === "detail") tabs.splice(1, 0, ["detail", "Score"]);
   if (state.tab === "morning") tabs.splice(1, 0, ["morning", "Morning"]);
   tabs.forEach(function (t) {
     nav.appendChild(el("button", {
@@ -1615,6 +1911,7 @@ function render() {
   else if (state.tab === "evening") main.appendChild(eveningScreen());
   else if (state.tab === "morning") main.appendChild(morningScreen());
   else if (state.tab === "rewards") main.appendChild(rewardsScreen());
+  else if (state.tab === "detail") main.appendChild(detailScreen());
   else if (state.tab === "baseline") main.appendChild(baselineScreen());
   else main.appendChild(historyScreen());
   window.scrollTo(0, 0);

@@ -509,3 +509,52 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .pay-sum { color: var(--dim); font-size: 13px; }
 .pay-amount { margin-left: auto; color: var(--text); }
 .day-pay { color: var(--text); margin-left: 10px; }
+
+/* Tiles that open their own panel */
+.score.tappable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.tap-hint {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* Score panel */
+.contrib { margin-bottom: 14px; }
+.contrib-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.contrib-points { color: var(--dim); font-size: 14px; }
+.contrib-bar {
+  height: 4px;
+  background: var(--surface);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.contrib-fill { height: 4px; border-radius: 2px; }
+.contrib-note { font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+.mini-strip { display: flex; gap: 3px; }
+.mini-cell {
+  flex: 1;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.mini-cell.empty { background: none; border: 1px dashed var(--line); color: var(--dim); }
+.panel-head { margin-top: 24px; }
