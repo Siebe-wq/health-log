@@ -108,6 +108,22 @@ GitHub Pages takes about a minute to publish after a push. After that:
 
 So: yes, it updates itself, but only when opened online, and never mid-entry.
 
+## Today does not count until the evening is submitted
+
+A day in progress is not a reading. Until Save day is pressed, today is left
+out of both scores, both panels, the chart, the pacing row and the strips — its
+column is simply empty.
+
+Without that, a few items tapped in the afternoon would feed the numbers, and
+today carries the heaviest weight of any day in the PEM predictor's window. A
+heavy but unfinished day could push the predictor hard on the strength of three
+taps. Every backward-looking view reads days through one function,
+`settledEntry`, so there is one place where this holds.
+
+Two things are deliberately **not** gated. The pot pays a win the moment you
+log it. History still lists today as a draft, since that is what History is
+for.
+
 ## The score panels
 
 Tapping either number on Home opens its own panel: the score over the last
@@ -180,6 +196,7 @@ What it deliberately leaves out:
 
 - The five *what the day asked of you* items. Being physically active is a
   cause, not a symptom.
+- Today, until you press Save day. See below.
 - Values you have not stood behind. Every record starts pre-filled at baseline,
   so a night you never logged would otherwise count as a normal night and
   flatter the score. An item counts once you move it yourself, or once you

@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.11.0";
+var VERSION = "v1.12.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -596,7 +596,7 @@ var LOAD_WEIGHTS = [1, 1, 0.6, 0.3];
 function pemRisk(endDate) {
   var sum = 0, weight = 0, days = 0;
   for (var i = 0; i < LOAD_WEIGHTS.length; i++) {
-    var b = loadBurden(state.days[shiftDay(endDate, -i)]);
+    var b = loadBurden(settledEntry(shiftDay(endDate, -i)));
     if (b === null) continue;
     sum += LOAD_WEIGHTS[i] * b; weight += LOAD_WEIGHTS[i]; days++;
   }
@@ -608,7 +608,7 @@ function pemRisk(endDate) {
 function symptomsHoldingUp(endDate) {
   var scores = [];
   for (var i = 0; i < 2; i++) {
-    var sc = dayScore(state.days[shiftDay(endDate, -i)]);
+    var sc = dayScore(settledEntry(shiftDay(endDate, -i)));
     if (sc !== null) scores.push(sc);
   }
   if (scores.length === 0) return null;
@@ -622,13 +622,28 @@ function symptomsHoldingUp(endDate) {
 function weekScore(endDate) {
   var sum = 0, weight = 0, days = 0;
   for (var i = 0; i < 7; i++) {
-    var b = dayBurden(state.days[shiftDay(endDate, -i)]);
+    var b = dayBurden(settledEntry(shiftDay(endDate, -i)));
     if (b === null) continue;
     var w = Math.pow(0.5, i / 3);
     sum += w * b; weight += w; days++;
   }
   if (days < 3) return { score: null, days: days };
   return { score: Math.round(100 * (1 - sum / weight)), days: days };
+}
+
+/* Today is still happening. Until you press Save day it is a day in progress,
+   not a reading: a couple of items tapped in the afternoon would otherwise feed
+   both scores, and today carries the heaviest weight in the PEM predictor of
+   any day in the window. So every backward-looking view — the scores, their
+   panels, the chart, the strips — reads days through here, and today joins the
+   record when the evening is submitted.
+
+   The pot is deliberately not gated: a win should pay the moment you log it. */
+function settledEntry(date) {
+  var e = state.days[date];
+  if (!e) return null;
+  if (date === today() && !e.complete) return null;
+  return e;
 }
 
 /* ---------- the pot ---------- */
@@ -768,7 +783,7 @@ function contributions(kind) {
   var contrib = {}, totalWeight = 0, daysUsed = 0;
 
   for (var i = 0; i < weights.length; i++) {
-    var e = state.days[shiftDay(t, -i)];
+    var e = settledEntry(shiftDay(t, -i));
     if (!e) continue;
     var parts = kind === "pem" ? loadParts(e) : scoreParts(e);
     if (parts.length < (kind === "pem" ? MIN_LOAD_ITEMS : MIN_SCORED)) continue;
@@ -849,7 +864,7 @@ function itemStrip(key) {
   for (var i = 6; i >= 0; i--) {
     (function (i) {
       var d = shiftDay(t, -i);
-      var e = state.days[d];
+      var e = settledEntry(d);
       var text = "\u2013", fill = VAL.none;
       if (key === "sleepHours") {
         var hb = e && nightIsLogged(e) ? hoursBurden(e) : null;
@@ -955,7 +970,7 @@ function detailScreen() {
 function sleepNote() {
   var t = today(), sum = 0, n = 0;
   for (var i = 0; i < 7; i++) {
-    var e = state.days[shiftDay(t, -i)];
+    var e = settledEntry(shiftDay(t, -i));
     if (!e || !nightIsLogged(e)) continue;
     var h = e.sleepHours;
     if (h === "" || h === undefined || h === null) continue;
@@ -1156,7 +1171,7 @@ function chart() {
 
     var data = picked.map(function (def) {
       return dates.map(function (d) {
-        var e = state.days[d];
+        var e = settledEntry(d);
         return e ? def.value(e) : null;
       });
     });
@@ -1262,7 +1277,7 @@ function chart() {
         return;
       }
       var d = dates[chartPick];
-      var e = state.days[d];
+      var e = settledEntry(d);
       var open = el("button", { class: "readout-open", type: "button",
         onclick: function () { openEvening(d); } }, [
         el("span", { text: pretty(d) })
@@ -1338,7 +1353,7 @@ function pacingRow() {
 
   grid.appendChild(el("div", { class: "grid-label", text: "Pacing" }));
   dates.forEach(function (d) {
-    var e = state.days[d];
+    var e = settledEntry(d);
     var text = "\u2013", fill = VAL.none;
     if (e && itemCounts(e, "pacing") && e.v.pacing !== undefined) {
       text = String(e.v.pacing);
