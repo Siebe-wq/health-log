@@ -558,3 +558,43 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .mini-cell.empty { background: none; border: 1px dashed var(--line); color: var(--dim); }
 .panel-head { margin-top: 24px; }
+
+/* What to track */
+.track-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  color: var(--text);
+  padding: 0;
+  text-align: left;
+}
+.track-row.off { color: var(--dim); }
+.track-name, .track-name-plain {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 12px;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+.track-state { color: var(--dim); font-size: 13px; }
+.track-remove {
+  min-height: 46px;
+  padding: 0 12px;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 13px;
+}

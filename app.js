@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.12.0";
+var VERSION = "v1.13.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -86,7 +86,7 @@ function valenceFill(delta) {
 
 /* ---------- items ---------- */
 
-var EVENING_SECTIONS = [
+var BUILTIN_SECTIONS = [
   { title: "Energy", band: "Symptoms", items: [
     { key: "tired", label: "Feeling tired / sluggish" },
     { key: "pem", label: "PEM" },
@@ -121,19 +121,113 @@ var EVENING_SECTIONS = [
   ]}
 ];
 
-var MORNING_ITEMS = [
+var BUILTIN_MORNING = [
   { key: "sleep", label: "Sleep quality", ramp: SLEEP_RAMP, higherIsBetter: true },
   { key: "episode", label: "Dysautonomic episode", max: 5, ramp: RAMP6 },
   { key: "syncope", label: "Near-syncope", max: 1, labels: ["no", "yes"] }
 ];
 
-var EVENING_ITEMS = [];
-EVENING_SECTIONS.forEach(function (s) { EVENING_ITEMS = EVENING_ITEMS.concat(s.items); });
-var ALL_ITEMS = EVENING_ITEMS.concat(MORNING_ITEMS);
-var ITEM_BY_KEY = {};
-ALL_ITEMS.forEach(function (i) { ITEM_BY_KEY[i.key] = i; });
-var EVENING_KEYS = EVENING_ITEMS.map(function (i) { return i.key; });
-var ALL_KEYS = ALL_ITEMS.map(function (i) { return i.key; });
+/* The registry is rebuilt rather than fixed, because what is tracked is a
+   setting now: items can be hidden, and your own can be added. Everything
+   downstream — the entry screens, the scores, the panels, the chart picker —
+   reads these, so there is one place that decides what exists.
+
+   Hidden items keep their history. They stop being offered for entry and stop
+   counting toward the scores, but every value ever recorded still exports. */
+var EVENING_SECTIONS, EVENING_ITEMS, MORNING_ITEMS, ALL_ITEMS, ITEM_BY_KEY,
+    EVENING_KEYS, ALL_KEYS, MORNING_KEYS, CARRY_KEYS,
+    LOAD_KEYS, SCORE_ITEMS, DEMAND_ITEMS, MIN_SCORED, MIN_LOAD_ITEMS;
+
+var BUILTIN_LOAD_KEYS = ["physical", "mental", "social", "emotional", "pacing"];
+
+function customItems(band) {
+  return (state.custom || []).filter(function (c) { return c.band === band; })
+    .map(function (c) {
+      var item = { key: c.key, label: c.label, custom: true };
+      if (c.max !== undefined) item.max = c.max;
+      if (c.max === 1) item.labels = ["no", "yes"];
+      return item;
+    });
+}
+
+function isHidden(key) {
+  return !!(state.hidden && state.hidden[key]);
+}
+
+function rebuildItems() {
+  var visible = function (i) { return !isHidden(i.key); };
+
+  EVENING_SECTIONS = BUILTIN_SECTIONS.map(function (sec) {
+    var items = sec.items.filter(visible);
+    if (sec.title === "What the day asked of you") {
+      items = items.concat(customItems("exertion").filter(visible));
+    }
+    return { title: sec.title, band: sec.band, items: items };
+  }).filter(function (sec) { return sec.items.length > 0; });
+
+  var mine = customItems("symptoms").filter(visible);
+  if (mine.length) {
+    /* Your own symptoms sit at the end of the Symptoms band, before Exertion. */
+    var at = EVENING_SECTIONS.length;
+    for (var i = 0; i < EVENING_SECTIONS.length; i++) {
+      if (EVENING_SECTIONS[i].band === "Exertion") { at = i; break; }
+    }
+    EVENING_SECTIONS.splice(at, 0, { title: "Your own", items: mine });
+  }
+  /* A band header belongs to whichever section now opens that band. */
+  var seen = {};
+  EVENING_SECTIONS.forEach(function (sec) {
+    if (sec.band) { seen[sec.band] = true; }
+  });
+  if (!seen.Symptoms && EVENING_SECTIONS.length && !EVENING_SECTIONS[0].band) {
+    EVENING_SECTIONS[0].band = "Symptoms";
+  }
+
+  MORNING_ITEMS = BUILTIN_MORNING.filter(visible).concat(customItems("night").filter(visible));
+
+  EVENING_ITEMS = [];
+  EVENING_SECTIONS.forEach(function (sec) { EVENING_ITEMS = EVENING_ITEMS.concat(sec.items); });
+  ALL_ITEMS = EVENING_ITEMS.concat(MORNING_ITEMS);
+  ITEM_BY_KEY = {};
+  ALL_ITEMS.forEach(function (i) { ITEM_BY_KEY[i.key] = i; });
+  EVENING_KEYS = EVENING_ITEMS.map(function (i) { return i.key; });
+  ALL_KEYS = ALL_ITEMS.map(function (i) { return i.key; });
+  MORNING_KEYS = MORNING_ITEMS.map(function (i) { return i.key; });
+  CARRY_KEYS = EVENING_KEYS;
+
+  LOAD_KEYS = BUILTIN_LOAD_KEYS.concat(customItems("exertion").map(function (i) { return i.key; }));
+  SCORE_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) < 0; });
+  DEMAND_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) >= 0; });
+
+  /* The floors have to bend to what is actually tracked, or hiding a handful
+     of items would silently switch a score off for good. */
+  MIN_SCORED = Math.max(1, Math.min(8, Math.ceil(SCORE_ITEMS.length / 2)));
+  MIN_LOAD_ITEMS = Math.max(1, Math.min(3, Math.ceil((DEMAND_ITEMS.length + 2) / 2)));
+}
+
+/* Every key that has ever been defined, so hiding or deleting an item never
+   drops its history out of the CSV. */
+function exportKeys() {
+  var keys = [];
+  BUILTIN_SECTIONS.forEach(function (sec) {
+    sec.items.forEach(function (i) { keys.push(i.key); });
+  });
+  BUILTIN_MORNING.forEach(function (i) { keys.push(i.key); });
+  (state.custom || []).forEach(function (c) {
+    if (keys.indexOf(c.key) < 0) keys.push(c.key);
+  });
+  Object.keys(state.retired || {}).forEach(function (k) {
+    if (keys.indexOf(k) < 0) keys.push(k);
+  });
+  return keys;
+}
+
+function exportNameFor(key) {
+  if (EXPORT_NAME[key]) return EXPORT_NAME[key];
+  var c = (state.custom || []).filter(function (x) { return x.key === key; })[0];
+  if (c) return c.label;
+  return (state.retired || {})[key] || key;
+}
 
 var DEFAULT_BASELINES = {
   tired: 2, pem: 1, crash: 0, mood: 2, brainFog: 2, headache: 0, noise: 2,
@@ -222,7 +316,11 @@ var state = {
   storeMsg: "",
   lastBackupAt: null,
   chartKeys: ["symptoms", "exertion"],
-  detail: "week"
+  detail: "week",
+  hidden: {},
+  custom: [],
+  retired: {},
+  pay: { on: true, win: 0.20, pacing1: 0.25, pacing0: 0.50 }
 };
 
 /* Mood went from four points to five in v1.9.0, with neutral inserted in the
@@ -253,6 +351,11 @@ function loadStore() {
     state.baselines = Object.assign({}, DEFAULT_BASELINES, parsed.baselines || {});
     state.lastBackupAt = parsed.lastBackupAt || null;
     if (parsed.chartKeys && parsed.chartKeys.length) state.chartKeys = parsed.chartKeys;
+    state.hidden = parsed.hidden || {};
+    state.custom = parsed.custom || [];
+    state.retired = parsed.retired || {};
+    state.pay = Object.assign({ on: true, win: 0.20, pacing1: 0.25, pacing0: 0.50 }, parsed.pay || {});
+    rebuildItems();
   } catch (e) {
     state.storeOk = false;
     state.storeMsg = "read: " + (e && e.message ? e.message : String(e));
@@ -265,7 +368,8 @@ function saveNow() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
       version: STORE_VERSION, days: state.days, baselines: state.baselines,
-      lastBackupAt: state.lastBackupAt, chartKeys: state.chartKeys
+      lastBackupAt: state.lastBackupAt, chartKeys: state.chartKeys,
+      hidden: state.hidden, custom: state.custom, retired: state.retired, pay: state.pay
     }));
     if (!state.storeOk) { state.storeOk = true; state.storeMsg = ""; renderBanner(); }
     flash("Saved");
@@ -405,38 +509,56 @@ function ratingRow(item, getValue, setValue, baselineOf, onAfter) {
   return { el: el("div", { class: "row" }, [label, opts]), refresh: refresh };
 }
 
-/* Half hour steps so it needs no keyboard in the dark; the field still takes a
-   typed number. Used by the Morning screen and by the Baseline screen. */
-function hoursStepper(get, set, opts) {
+/* Stepper buttons so a value needs no keyboard in the dark; the field still
+   takes a typed number. Used for hours of sleep and for the reward amounts. */
+function numberStepper(get, set, opts) {
   opts = opts || {};
-  var field = el("input", { type: "number", step: "0.5", min: "0", max: "24",
+  var step = opts.step === undefined ? 0.5 : opts.step;
+  var min = opts.min === undefined ? 0 : opts.min;
+  var max = opts.max === undefined ? 24 : opts.max;
+  var dp = opts.decimals === undefined ? 1 : opts.decimals;
+  var field = el("input", { type: "number", step: String(step), min: String(min), max: String(max),
     inputmode: "decimal", class: "hours-field", placeholder: opts.placeholder || "\u2013" });
-  var cur = get();
-  field.value = cur === undefined || cur === null ? "" : cur;
+
+  function show(n) {
+    field.value = n === "" || n === null || n === undefined ? "" : String(Number(n));
+  }
+  show(get());
 
   function write(v) {
-    var n = v === "" ? "" : Math.max(0, Math.min(24, Math.round(parseFloat(v) * 2) / 2));
-    if (n !== "" && isNaN(n)) n = "";
-    if (n === "" && opts.required) n = get();
-    field.value = n;
-    set(n);
+    var n = v === "";
+    if (!n) {
+      var f = parseFloat(v);
+      if (isNaN(f)) { n = true; }
+      else {
+        f = Math.max(min, Math.min(max, Math.round(f / step) * step));
+        v = Number(f.toFixed(dp));
+      }
+    }
+    if (n) v = opts.required ? get() : "";
+    show(v);
+    set(v);
     saveSoon(200);
   }
   field.addEventListener("change", function () { write(field.value); });
 
-  function step(by) {
+  function bump(by) {
     /* From blank the first press lands on the anchor, not anchor plus a step. */
     var v = parseFloat(field.value);
     write(isNaN(v) ? (opts.anchor === undefined ? 8 : opts.anchor) : v + by);
     saveNow();
   }
   return el("div", { class: "stepper" }, [
-    el("button", { class: "btn", type: "button", text: "\u2212", "aria-label": "Half an hour less",
-      onclick: function () { step(-0.5); } }),
+    el("button", { class: "btn", type: "button", text: "\u2212", "aria-label": "Less",
+      onclick: function () { bump(-step); } }),
     field,
-    el("button", { class: "btn", type: "button", text: "+", "aria-label": "Half an hour more",
-      onclick: function () { step(0.5); } })
+    el("button", { class: "btn", type: "button", text: "+", "aria-label": "More",
+      onclick: function () { bump(step); } })
   ]);
+}
+
+function hoursStepper(get, set, opts) {
+  return numberStepper(get, set, Object.assign({ step: 0.5, max: 24, anchor: 8 }, opts || {}));
 }
 
 /* ---------- date navigation ---------- */
@@ -459,8 +581,6 @@ function dateNav(getDate, setDate, caption) {
 /* The score is about how you were, not what the day asked of you. Being
    physically active is a cause, not a symptom, so those five items are left
    out of it. */
-var LOAD_KEYS = ["physical", "mental", "social", "emotional", "pacing"];
-var SCORE_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) < 0; });
 
 /* How far one item sits the wrong side of its baseline, as 0..1.
    0 = at your normal or better. 1 = as bad as that item goes. */
@@ -481,7 +601,6 @@ function itemBurden(item, value, base) {
    yourself, or if you pressed Save day (evening items) or finished the
    morning (night items), which is where leaving something at baseline becomes
    a statement that it was normal. */
-var MORNING_KEYS = MORNING_ITEMS.map(function (i) { return i.key; });
 
 function itemCounts(entry, key) {
   if (entry.touched && entry.touched[key]) return true;
@@ -492,7 +611,6 @@ function itemCounts(entry, key) {
 /* A day part way through entry says almost nothing. One item tapped at its
    worst would otherwise read as a score of 0. Half the items is the floor for
    a day to count at all; pressing Save day clears it comfortably. */
-var MIN_SCORED = 8;
 
 /* As above, for the symptom side. */
 function scoreParts(entry) {
@@ -534,8 +652,6 @@ function dayScore(entry) {
    Note the two axes, which are easy to confuse: these six items are averaged
    into one burden for a day, and then four DAYS of that burden are weighted
    below. Six items, four days. */
-var DEMAND_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) >= 0; });
-var MIN_LOAD_ITEMS = 3;
 
 /* Hours short of the hours you normally need, as 0..1. Sleeping longer than
    target scores 0 rather than earning credit, the same as every other item.
@@ -651,8 +767,11 @@ function settledEntry(date) {
 /* Paid for the two things worth reinforcing: noticing you did something well,
    and pacing. Pacing is scored on the value itself rather than on the distance
    from baseline — 1 is your normal and still earns, 0 earns double. */
-var PAY_WIN = 0.20;
-var PAY_PACING = { 0: 0.50, 1: 0.25 };
+function payWin() { return state.pay.on ? state.pay.win : 0; }
+function payPacing(v) {
+  if (!state.pay.on) return 0;
+  return v === 0 ? state.pay.pacing0 : v === 1 ? state.pay.pacing1 : 0;
+}
 
 function euro(n) {
   return "\u20ac" + n.toFixed(2);
@@ -662,14 +781,19 @@ function euro(n) {
    exist at their pre-filled baseline do not quietly earn. */
 function pacingPay(entry) {
   if (!entry || !itemCounts(entry, "pacing")) return 0;
-  var v = entry.v.pacing;
-  return PAY_PACING[v] || 0;
+  return payPacing(entry.v.pacing);
 }
 function winCount(entry) {
   return entry && entry.wins ? entry.wins.length : 0;
 }
 function dayPay(entry) {
-  return winCount(entry) * PAY_WIN + pacingPay(entry);
+  return winCount(entry) * payWin() + pacingPay(entry);
+}
+
+function winTotal() {
+  var n = 0;
+  Object.keys(state.days).forEach(function (d) { n += winCount(state.days[d]); });
+  return n;
 }
 
 function potTotal() {
@@ -702,33 +826,39 @@ function rewardsScreen() {
     var e = state.days[d];
     wins += winCount(e);
     var p = pacingPay(e);
-    if (p === PAY_PACING[0]) pacing0++;
-    else if (p === PAY_PACING[1]) pacing1++;
+    if (itemCounts(e, "pacing") && e.v.pacing === 0) pacing0++;
+    else if (itemCounts(e, "pacing") && e.v.pacing === 1) pacing1++;
   });
 
   wrap.appendChild(el("div", { class: "score" }, [
-    el("div", { class: "score-label", text: "In the pot" }),
+    el("div", { class: "score-label", text: state.pay.on ? "In the pot" : "Things done well" }),
     el("div", { class: "score-head" }, [
-      el("span", { class: "score-num pot", text: euro(potTotal()) })
+      el("span", { class: "score-num pot", text: state.pay.on ? euro(potTotal()) : String(wins) })
     ]),
-    el("div", { class: "score-cap", text: "Everything logged so far" })
+    el("div", { class: "score-cap", text: state.pay.on
+      ? "Everything logged so far"
+      : "Everything logged so far · paying for them is switched off in Baseline" })
   ]));
 
-  wrap.appendChild(el("div", { class: "section" }, [
+  if (state.pay.on) wrap.appendChild(el("div", { class: "section" }, [
     el("h2", { class: "section-head", text: "Where it came from" }),
     payLine(wins + (wins === 1 ? " thing done well" : " things done well"),
-      wins + " × " + euro(PAY_WIN), wins * PAY_WIN),
+      wins + " × " + euro(state.pay.win), wins * payWin()),
     payLine(pacing1 + (pacing1 === 1 ? " day pacing at 1" : " days pacing at 1"),
-      pacing1 + " × " + euro(PAY_PACING[1]), pacing1 * PAY_PACING[1]),
+      pacing1 + " × " + euro(state.pay.pacing1), pacing1 * payPacing(1)),
     payLine(pacing0 + (pacing0 === 1 ? " day pacing at 0" : " days pacing at 0"),
-      pacing0 + " × " + euro(PAY_PACING[0]), pacing0 * PAY_PACING[0])
+      pacing0 + " × " + euro(state.pay.pacing0), pacing0 * payPacing(0))
   ]));
 
-  var earning = dates.filter(function (d) { return dayPay(state.days[d]) > 0; });
+  var earning = dates.filter(function (d) {
+    return state.pay.on ? dayPay(state.days[d]) > 0 : winCount(state.days[d]) > 0;
+  });
   wrap.appendChild(el("h2", { class: "section-head", text: "Day by day" }));
   if (earning.length === 0) {
     wrap.appendChild(el("div", { class: "hint",
-      text: "Nothing yet. Tap “Did something well” on Home, or log a day paced at 1 or 0." }));
+      text: state.pay.on
+        ? "Nothing yet. Tap “Did something well” on Home, or log a day paced at 1 or 0."
+        : "Nothing yet. Tap “Did something well” on Home." }));
   }
   earning.forEach(function (d) {
     var e = state.days[d];
@@ -741,7 +871,7 @@ function rewardsScreen() {
         el("span", { text: pretty(d) }),
         el("span", { class: "meta" }, [
           el("span", { text: bits.join(" · ") }),
-          el("span", { class: "day-pay", text: euro(dayPay(e)) })
+          state.pay.on ? el("span", { class: "day-pay", text: euro(dayPay(e)) }) : null
         ])
       ])
     ]);
@@ -1460,7 +1590,7 @@ function homeScreen() {
   winBtn.addEventListener("click", function () {
     logWin(t);
     render();
-    flash("Logged · " + euro(PAY_WIN));
+    flash(state.pay.on ? "Logged · " + euro(payWin()) : "Logged");
   });
   winBox.appendChild(winBtn);
 
@@ -1476,7 +1606,8 @@ function homeScreen() {
     });
     winMsg.style.display = "";
     winMsg.appendChild(el("span", {
-      text: count + (count === 1 ? " thing" : " things") + " today · " + euro(count * PAY_WIN) }));
+      text: count + (count === 1 ? " thing" : " things") + " today"
+        + (state.pay.on ? " · " + euro(count * payWin()) : "") }));
     winMsg.appendChild(el("button", { class: "win-undo", type: "button", text: "remove last",
       onclick: function () { removeWin(t, last); render(); } }));
     winBox.appendChild(note);
@@ -1500,8 +1631,8 @@ function homeScreen() {
   done.forEach(function (c) { wrap.appendChild(c); });
   wrap.appendChild(el("button", { class: "pot-line", type: "button",
     onclick: function () { state.tab = "rewards"; render(); } }, [
-    el("span", { text: "In the pot" }),
-    el("span", { class: "pot-amount", text: euro(potTotal()) })
+    el("span", { text: state.pay.on ? "In the pot" : "Things done well" }),
+    el("span", { class: "pot-amount", text: state.pay.on ? euro(potTotal()) : String(winTotal()) })
   ]));
   wrap.appendChild(backupLine());
   return wrap;
@@ -1695,10 +1826,15 @@ function morningScreen() {
 
 /* ---------- baseline ---------- */
 
+/* The setup screen. Baselines were the whole of it once; what is tracked and
+   what it pays are settings now too, so they live here behind their own band
+   headers rather than in the code. */
 function baselineScreen() {
   var wrap = el("div");
+
+  wrap.appendChild(el("h2", { class: "band", text: "Baselines" }));
   wrap.appendChild(el("div", { class: "hint",
-    text: "Your normal value for each item. New days start here, and anything different gets a dot. The dashed outline on the entry screens marks the baseline." }));
+    text: "Your normal value for each item. New days start here, and anything different gets a dot." }));
   ALL_ITEMS.forEach(function (it) {
     var row = ratingRow(it,
       function () { return state.baselines[it.key]; },
@@ -1706,21 +1842,148 @@ function baselineScreen() {
       null);
     wrap.appendChild(row.el);
   });
-  wrap.appendChild(section("Hours you normally need", [
-    hoursStepper(
-      function () { return state.baselines.hoursTarget; },
-      function (n) { state.baselines.hoursTarget = n === "" ? DEFAULT_BASELINES.hoursTarget : n; },
-      { anchor: 8, required: true }
-    ),
-    el("div", { class: "note-line",
-      text: "Only sleeping short of this counts against the PEM predictor. Sleeping longer is not scored either way." })
+
+  wrap.appendChild(el("h2", { class: "band", text: "Sleep" }));
+  wrap.appendChild(el("div", { class: "field-label", text: "Hours you normally need" }));
+  wrap.appendChild(hoursStepper(
+    function () { return state.baselines.hoursTarget; },
+    function (n) { state.baselines.hoursTarget = n === "" ? DEFAULT_BASELINES.hoursTarget : n; },
+    { anchor: 8, required: true }
+  ));
+  wrap.appendChild(el("div", { class: "note-line",
+    text: "Only sleeping short of this counts against the PEM predictor." }));
+
+  /* ---- what to track ---- */
+  wrap.appendChild(el("h2", { class: "band", text: "What to track" }));
+  wrap.appendChild(el("div", { class: "hint",
+    text: "Hidden items stop being asked for and stop counting toward the scores. Everything already recorded is kept and still exports." }));
+  wrap.appendChild(el("div", { class: "hint",
+    text: "Both scores are an average across the items tracked, so hiding or adding one changes what the number is an average of. Scores from before a change are not strictly comparable with scores after it." }));
+
+  function trackRow(key, label, custom) {
+    var off = isHidden(key);
+    var row = el("div", { class: "track-row" + (off ? " off" : "") }, [
+      el("button", { class: "track-name", type: "button",
+        onclick: function () {
+          if (off) delete state.hidden[key]; else state.hidden[key] = true;
+          saveNow(); rebuildItems(); render(true);
+        }
+      }, [
+        el("span", { text: label }),
+        el("span", { class: "track-state", text: off ? "hidden" : "shown" })
+      ])
+    ]);
+    if (custom) {
+      row.appendChild(el("button", { class: "track-remove", type: "button", text: "remove",
+        onclick: function () {
+          state.retired = state.retired || {};
+          state.retired[key] = label;
+          state.custom = state.custom.filter(function (c) { return c.key !== key; });
+          delete state.hidden[key];
+          saveNow(); rebuildItems(); render(true);
+        }}));
+    }
+    return row;
+  }
+
+  BUILTIN_SECTIONS.forEach(function (sec) {
+    wrap.appendChild(el("div", { class: "section-head", text: sec.title }));
+    sec.items.forEach(function (it) { wrap.appendChild(trackRow(it.key, it.label)); });
+  });
+  wrap.appendChild(el("div", { class: "section-head", text: "Night" }));
+  BUILTIN_MORNING.forEach(function (it) { wrap.appendChild(trackRow(it.key, it.label)); });
+
+  if ((state.custom || []).length) {
+    wrap.appendChild(el("div", { class: "section-head", text: "Your own" }));
+    state.custom.forEach(function (c) {
+      wrap.appendChild(trackRow(c.key, c.label + " · " + bandName(c.band), true));
+    });
+  }
+
+  /* ---- add your own ---- */
+  var draft = { label: "", max: 3, band: "symptoms" };
+  var addMsg = el("div", { class: "msg", style: { display: "none" } });
+  var nameField = el("input", { type: "text", placeholder: "Name it" });
+  nameField.addEventListener("input", function () { draft.label = nameField.value; });
+
+  function chipRow(options, get, set) {
+    var row = el("div", { class: "tags" });
+    options.forEach(function (o) {
+      var btn = el("button", { type: "button", text: o.label,
+        "aria-pressed": get() === o.value ? "true" : "false",
+        onclick: function () {
+          set(o.value);
+          Array.prototype.forEach.call(row.children, function (c, i) {
+            c.setAttribute("aria-pressed", options[i].value === get() ? "true" : "false");
+          });
+        }});
+      row.appendChild(btn);
+    });
+    return row;
+  }
+
+  wrap.appendChild(el("div", { class: "section-head", text: "Add your own" }));
+  wrap.appendChild(nameField);
+  wrap.appendChild(el("div", { class: "field-label", text: "Scale" }));
+  wrap.appendChild(chipRow([{ label: "0-3", value: 3 }, { label: "no / yes", value: 1 }],
+    function () { return draft.max; }, function (v) { draft.max = v; }));
+  wrap.appendChild(el("div", { class: "field-label", text: "Where it belongs" }));
+  wrap.appendChild(chipRow(
+    [{ label: "Symptoms", value: "symptoms" }, { label: "Exertion", value: "exertion" },
+     { label: "Night", value: "night" }],
+    function () { return draft.band; }, function (v) { draft.band = v; }));
+  wrap.appendChild(el("button", { class: "btn wide raised", type: "button", text: "Add it",
+    onclick: function () {
+      var label = (draft.label || "").trim();
+      if (!label) { addMsg.textContent = "Give it a name first."; addMsg.style.display = ""; return; }
+      var key = "c" + Date.now().toString(36);
+      state.custom = (state.custom || []).concat([
+        { key: key, label: label, max: draft.max, band: draft.band }]);
+      state.baselines[key] = 0;
+      saveNow(); rebuildItems(); render(true);
+    }}));
+  wrap.appendChild(el("div", { class: "note-line",
+    text: "It starts at baseline 0. Set its normal in Baselines above." }));
+  wrap.appendChild(addMsg);
+
+  /* ---- rewards ---- */
+  wrap.appendChild(el("h2", { class: "band", text: "Rewards" }));
+  wrap.appendChild(el("button", { class: "track-row", type: "button",
+    onclick: function () { state.pay.on = !state.pay.on; saveNow(); render(true); }
+  }, [
+    el("span", { class: "track-name-plain" }, [
+      el("span", { text: "Pay for wins and pacing" }),
+      el("span", { class: "track-state", text: state.pay.on ? "on" : "off" })
+    ])
   ]));
+
+  if (state.pay.on) {
+    [["Each thing done well", "win", 0.20],
+     ["A day paced at 1", "pacing1", 0.25],
+     ["A day paced at 0", "pacing0", 0.50]].forEach(function (row) {
+      wrap.appendChild(el("div", { class: "field-label", text: row[0] + " (\u20ac)" }));
+      wrap.appendChild(numberStepper(
+        function () { return state.pay[row[1]]; },
+        function (n) { state.pay[row[1]] = n === "" ? row[2] : n; },
+        { step: 0.05, min: 0, max: 20, decimals: 2, anchor: row[2], required: true }
+      ));
+    });
+    wrap.appendChild(el("div", { class: "note-line",
+      text: "Changing an amount re-prices every day already logged — the pot is worked out from the log, not banked." }));
+  } else {
+    wrap.appendChild(el("div", { class: "note-line",
+      text: "Wins are still logged and still counted. Only the money is off." }));
+  }
 
   wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
     onclick: function () { state.tab = "home"; render(); } }));
   wrap.appendChild(el("div", { class: "note-line",
-    text: "Each tap applies straight away. Done just takes you back." }));
+    text: "Everything here applies straight away. Done just takes you back." }));
   return wrap;
+}
+
+function bandName(band) {
+  return band === "exertion" ? "Exertion" : band === "night" ? "Night" : "Symptoms";
 }
 
 /* ---------- backup files ---------- */
@@ -1728,7 +1991,8 @@ function baselineScreen() {
 function backupJson() {
   return JSON.stringify({
     app: "daily-log", version: STORE_VERSION, exportedAt: new Date().toISOString(),
-    baselines: state.baselines, days: state.days
+    baselines: state.baselines, hidden: state.hidden, custom: state.custom,
+    retired: state.retired, pay: state.pay, days: state.days
   }, null, 2);
 }
 
@@ -1741,9 +2005,11 @@ function backupCsv() {
   var rows = [["observation_date", "tracker_name", "tracker_category", "observation_value", "baseline"]];
   Object.keys(state.days).sort().forEach(function (d) {
     var e = state.days[d];
-    ALL_KEYS.forEach(function (k) {
+    /* Everything ever defined, not just what is on screen today, so hiding an
+       item never drops its history out of the export. */
+    exportKeys().forEach(function (k) {
       if (e.v[k] === undefined) return;
-      rows.push([d, EXPORT_NAME[k], CATEGORY[k], e.v[k],
+      rows.push([d, exportNameFor(k), CATEGORY[k] || "Custom", e.v[k],
         state.baselines[k] === undefined ? "" : state.baselines[k]]);
     });
     if (e.sleepHours !== "" && e.sleepHours !== undefined && e.sleepHours !== null) {
@@ -1791,6 +2057,12 @@ function restore(parsed) {
   if (parsed.baselines) {
     state.baselines = Object.assign({}, DEFAULT_BASELINES, parsed.baselines);
   }
+  /* A backup carries what was being tracked, not just the numbers. */
+  if (parsed.custom) state.custom = parsed.custom;
+  if (parsed.hidden) state.hidden = parsed.hidden;
+  if (parsed.retired) state.retired = parsed.retired;
+  if (parsed.pay) state.pay = Object.assign({}, state.pay, parsed.pay);
+  rebuildItems();
   saveNow();
   return { added: added, updated: updated, kept: kept };
 }
@@ -1905,7 +2177,7 @@ function renderTabs() {
   nav.innerHTML = "";
   var tabs = TABS.slice();
   if (state.tab === "evening") tabs.splice(1, 0, ["evening", "Evening"]);
-  if (state.tab === "rewards") tabs.splice(1, 0, ["rewards", "Pot"]);
+  if (state.tab === "rewards") tabs.splice(1, 0, ["rewards", state.pay.on ? "Pot" : "Wins"]);
   if (state.tab === "detail") tabs.splice(1, 0, ["detail", "Score"]);
   if (state.tab === "morning") tabs.splice(1, 0, ["morning", "Morning"]);
   tabs.forEach(function (t) {
@@ -1927,7 +2199,7 @@ function renderBanner() {
   ]));
 }
 
-function render() {
+function render(keepScroll) {
   renderTabs();
   renderBanner();
   var main = document.getElementById("screen");
@@ -1939,13 +2211,14 @@ function render() {
   else if (state.tab === "detail") main.appendChild(detailScreen());
   else if (state.tab === "baseline") main.appendChild(baselineScreen());
   else main.appendChild(historyScreen());
-  window.scrollTo(0, 0);
+  if (!keepScroll) window.scrollTo(0, 0);
 }
 
 /* ---------- start ---------- */
 
 var startedAt = Date.now();
 loadStore();
+rebuildItems();
 document.getElementById("version").textContent = VERSION;
 render();
 renderBanner();

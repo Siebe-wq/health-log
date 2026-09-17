@@ -42,7 +42,8 @@ and the tab appears only while you are on one, so there is a way back.
 
 **History** is the full list of days, plus the backup buttons.
 
-**Baseline** is your normal value for each of the 24 rated items, plus the hours of sleep you normally need.
+**Baseline** is the setup screen: your normal value for each item, the hours of
+sleep you normally need, what is tracked at all, and what the rewards pay.
 
 ## Putting it on the phone
 
@@ -150,16 +151,42 @@ explains it cannot disagree about what counted.
 The panel's day weights are derived from the same half life the score uses
 rather than copied, so the two cannot drift apart.
 
+## What is tracked is a setting
+
+The Baseline screen has a **What to track** section. Every item can be hidden,
+and you can add your own.
+
+- **Hiding** stops an item being asked for and stops it counting toward the
+  scores. Everything already recorded is kept and still exports — the CSV walks
+  every key ever defined, not just the ones on screen today.
+- **Adding your own** takes a name, a scale (0-3 or no/yes) and where it
+  belongs: Symptoms, Exertion or Night. It then behaves like any other item —
+  it gets a baseline, joins the matching score, appears in the chart picker and
+  exports under its own name. Removing one keeps its history in the export.
+
+Both scores are an average across the items tracked, **so hiding or adding one
+changes what the number is an average of.** Scores from before a change are not
+strictly comparable with scores after it. That is the honest cost of making it
+adjustable, and the screen says so.
+
+The floors bend with it. The week score needs half the tracked symptom items
+up to a maximum of eight, rather than a fixed eight, so hiding a handful cannot
+silently switch a score off for good.
+
+Everything downstream reads one registry, rebuilt by `rebuildItems()` whenever
+the setup changes, so there is a single place that decides what exists.
+
 ## The pot
 
 Two things pay, and both are things worth reinforcing rather than things that
-happen to you:
+happen to you. The amounts start at €0.20 a thing done well, €0.25 for a day
+paced at 1 and €0.50 for a day paced at 0, and all three are editable in the
+Rewards section of the Baseline screen — as is whether there is any money at
+all.
 
-```
-€0.20  each thing done well
-€0.25  a day paced at 1
-€0.50  a day paced at 0
-```
+The pot is **worked out from the log rather than banked**, so changing an
+amount re-prices every day already recorded. With the money switched off, wins
+are still logged and still counted; the tab becomes Wins and shows the count.
 
 **Did something well** on Home logs one with a single tap. The text is optional
 and comes after the tap, never before it, so a bad day still gets the tap.
