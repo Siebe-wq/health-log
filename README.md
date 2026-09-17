@@ -122,9 +122,14 @@ places by a test, not by eye. The only gap you will see on screen is the
 rounding of the score itself to a whole number.
 
 Each row carries the last seven days of what you actually entered, newest on
-the right, coloured the same way the rest of the app colours that item. Items
-sitting at or better than baseline are named in one line at the bottom rather
-than given rows of their own.
+the right, coloured the same way the rest of the app colours that item. Sleep
+hours has its own row showing the hours themselves, coloured by how far short
+of target each night fell. Items sitting at or better than baseline are named
+in one line at the bottom rather than given rows of their own.
+
+Both scores and both panels read their item lists from one function each —
+`loadParts` and `scoreParts` — so the number on Home and the breakdown that
+explains it cannot disagree about what counted.
 
 The panel's day weights are derived from the same half life the score uses
 rather than copied, so the two cannot drift apart.
@@ -270,11 +275,11 @@ Baseline screen.
 Recorded on the Morning screen with half hour steps, so it needs no keyboard in
 the dark, and the field still takes a typed number.
 
-Since v1.10.0 it feeds the PEM predictor, but **it shares one component with
-sleep quality rather than counting as a seventh item**. Quality and hours are
-two readings of the same night; giving each its own slot would have quietly
-doubled what sleep is worth in that score. The component is the average of the
-two burdens, or whichever one is present. Leaving hours blank costs nothing.
+It feeds the PEM predictor as **its own item, with the same weight as every
+other one**. Quality and hours are two readings of the same night, so between
+them sleep carries two of the seven slots on a night you log both — that is
+deliberate. Leaving hours blank costs nothing: the day is then scored over the
+six items it does have.
 
 The reference is **hours you normally need**, set at the bottom of the Baseline
 screen and starting at 8. Only sleeping short of it counts:

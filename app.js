@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.10.0";
+var VERSION = "v1.11.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -494,16 +494,25 @@ function itemCounts(entry, key) {
    a day to count at all; pressing Save day clears it comfortably. */
 var MIN_SCORED = 8;
 
-/* Mean burden across the items that day actually stands behind. */
-function dayBurden(entry) {
-  if (!entry) return null;
-  var sum = 0, n = 0;
+/* As above, for the symptom side. */
+function scoreParts(entry) {
+  var parts = [];
   SCORE_ITEMS.forEach(function (it) {
     if (!itemCounts(entry, it.key)) return;
     var b = itemBurden(it, entry.v[it.key], state.baselines[it.key]);
-    if (b !== null) { sum += b; n++; }
+    if (b !== null) parts.push({ key: it.key, label: it.label, burden: b });
   });
-  return n < MIN_SCORED ? null : sum / n;
+  return parts;
+}
+
+/* Mean burden across the items that day actually stands behind. */
+function dayBurden(entry) {
+  if (!entry) return null;
+  var parts = scoreParts(entry);
+  if (parts.length < MIN_SCORED) return null;
+  var sum = 0;
+  parts.forEach(function (p) { sum += p.burden; });
+  return sum / parts.length;
 }
 
 function dayScore(entry) {
@@ -526,7 +535,6 @@ function dayScore(entry) {
    into one burden for a day, and then four DAYS of that burden are weighted
    below. Six items, four days. */
 var DEMAND_ITEMS = ALL_ITEMS.filter(function (i) { return LOAD_KEYS.indexOf(i.key) >= 0; });
-var LOAD_ITEMS = DEMAND_ITEMS.concat([ITEM_BY_KEY.sleep]);
 var MIN_LOAD_ITEMS = 3;
 
 /* Hours short of the hours you normally need, as 0..1. Sleeping longer than
@@ -540,31 +548,33 @@ function hoursBurden(entry) {
   return Math.max(0, Math.min(1, (target - Number(h)) / target));
 }
 
-/* Quality and hours are two readings of the same night, so they share one
-   component rather than counting as two of the six. Otherwise adding hours
-   would quietly double what sleep is worth in this score. Average the two
-   when both are there; fall back to whichever one is. */
-function sleepComponent(entry) {
-  var quality = itemCounts(entry, "sleep")
-    ? itemBurden(ITEM_BY_KEY.sleep, entry.v.sleep, state.baselines.sleep)
-    : null;
-  var hours = nightIsLogged(entry) ? hoursBurden(entry) : null;
-  if (quality === null) return hours;
-  if (hours === null) return quality;
-  return (quality + hours) / 2;
+/* Everything the predictor weighs on one day, as a flat list. Both the score
+   and the panel that explains it read from here, so they cannot disagree about
+   what counted. Sleep quality and sleep hours are separate items: two readings
+   of the same night, but each carries its own weight. */
+function loadParts(entry) {
+  var parts = [];
+  DEMAND_ITEMS.forEach(function (it) {
+    if (!itemCounts(entry, it.key)) return;
+    var b = itemBurden(it, entry.v[it.key], state.baselines[it.key]);
+    if (b !== null) parts.push({ key: it.key, label: it.label, burden: b });
+  });
+  if (itemCounts(entry, "sleep")) {
+    var q = itemBurden(ITEM_BY_KEY.sleep, entry.v.sleep, state.baselines.sleep);
+    if (q !== null) parts.push({ key: "sleep", label: "Sleep quality", burden: q });
+  }
+  var h = nightIsLogged(entry) ? hoursBurden(entry) : null;
+  if (h !== null) parts.push({ key: "sleepHours", label: "Sleep hours", burden: h });
+  return parts;
 }
 
 function loadBurden(entry) {
   if (!entry) return null;
-  var sum = 0, n = 0;
-  DEMAND_ITEMS.forEach(function (it) {
-    if (!itemCounts(entry, it.key)) return;
-    var b = itemBurden(it, entry.v[it.key], state.baselines[it.key]);
-    if (b !== null) { sum += b; n++; }
-  });
-  var sleep = sleepComponent(entry);
-  if (sleep !== null) { sum += sleep; n++; }
-  return n < MIN_LOAD_ITEMS ? null : sum / n;
+  var parts = loadParts(entry);
+  if (parts.length < MIN_LOAD_ITEMS) return null;
+  var sum = 0;
+  parts.forEach(function (p) { sum += p.burden; });
+  return sum / parts.length;
 }
 
 /* Exertion that has not landed yet.
@@ -760,24 +770,8 @@ function contributions(kind) {
   for (var i = 0; i < weights.length; i++) {
     var e = state.days[shiftDay(t, -i)];
     if (!e) continue;
-    var parts = [];
-    if (kind === "pem") {
-      DEMAND_ITEMS.forEach(function (it) {
-        if (!itemCounts(e, it.key)) return;
-        var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
-        if (b !== null) parts.push({ key: it.key, label: it.label, burden: b });
-      });
-      var sleep = sleepComponent(e);
-      if (sleep !== null) parts.push({ key: "sleep", label: "Sleep quality and hours", burden: sleep });
-      if (parts.length < MIN_LOAD_ITEMS) continue;
-    } else {
-      SCORE_ITEMS.forEach(function (it) {
-        if (!itemCounts(e, it.key)) return;
-        var b = itemBurden(it, e.v[it.key], state.baselines[it.key]);
-        if (b !== null) parts.push({ key: it.key, label: it.label, burden: b });
-      });
-      if (parts.length < MIN_SCORED) continue;
-    }
+    var parts = kind === "pem" ? loadParts(e) : scoreParts(e);
+    if (parts.length < (kind === "pem" ? MIN_LOAD_ITEMS : MIN_SCORED)) continue;
     var w = weights[i];
     totalWeight += w;
     daysUsed++;
@@ -857,7 +851,13 @@ function itemStrip(key) {
       var d = shiftDay(t, -i);
       var e = state.days[d];
       var text = "\u2013", fill = VAL.none;
-      if (e && itemCounts(e, key) && e.v[key] !== undefined) {
+      if (key === "sleepHours") {
+        var hb = e && nightIsLogged(e) ? hoursBurden(e) : null;
+        if (hb !== null) {
+          text = String(e.sleepHours);
+          fill = hb === 0 ? VAL.same : heatFill(Math.round(100 * hb));
+        }
+      } else if (e && itemCounts(e, key) && e.v[key] !== undefined) {
         var item = ITEM_BY_KEY[key];
         var base = state.baselines[key];
         text = item.labels ? item.labels[e.v[key]].slice(0, 4) : String(e.v[key]);
@@ -898,7 +898,7 @@ function detailScreen() {
     el("div", { class: "score-label", text: kind === "pem" ? "PEM predictor" : "Week score" }),
     head,
     el("div", { class: "score-cap", text: kind === "pem"
-      ? "Six things over four days, weighted so today and yesterday count most. Higher is a warning."
+      ? "Demand, pacing and sleep over four days, weighted so today and yesterday count most. Higher is a warning."
       : "Symptoms against your own baseline over seven days, recent days weighted. Higher is better." })
   ]));
 
@@ -931,12 +931,10 @@ function detailScreen() {
         ]),
         bar
       ]);
-      if (r.key === "sleep" && kind === "pem") {
+      if (r.key === "sleepHours") {
         row.appendChild(el("div", { class: "contrib-note", text: sleepNote() }));
-        row.appendChild(itemStrip("sleep"));
-      } else {
-        row.appendChild(itemStrip(r.key));
       }
+      row.appendChild(itemStrip(r.key));
       wrap.appendChild(row);
     });
 
@@ -1075,7 +1073,7 @@ function pemTile() {
       : "PEM usually lands 12 to 48 hours later — the next day or two are the exposed part.";
   }
   box.appendChild(el("div", { class: "score-cap",
-    text: reading + " · 6 items over 4 days, a rule of thumb" }));
+    text: reading + " · demand, pacing and sleep over 4 days, a rule of thumb" }));
   box.appendChild(el("span", { class: "tap-hint", text: "what is behind this" }));
   return box;
 }
@@ -1105,6 +1103,18 @@ function seriesDefs() {
     { key: "exertion", label: "Exertion",
       value: function (e) { var b = loadBurden(e); return b === null ? null : Math.round(100 * b); } }
   ];
+  defs.push({
+    key: "i:sleepHours", label: "Sleep hours",
+    value: function (e) {
+      var b = nightIsLogged(e) ? hoursBurden(e) : null;
+      return b === null ? null : Math.round(100 * b);
+    },
+    raw: function (e) {
+      if (!nightIsLogged(e)) return null;
+      var h = e.sleepHours;
+      return h === "" || h === undefined || h === null ? null : h + "h";
+    }
+  });
   ALL_ITEMS.forEach(function (it) {
     var max = it.max === undefined ? 3 : it.max;
     defs.push({
