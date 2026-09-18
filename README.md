@@ -130,6 +130,18 @@ Two things are deliberately **not** gated. The pot pays a win the moment you
 log it. History still lists today as a draft, since that is what History is
 for.
 
+## What Home shows
+
+Settings → **Home screen** turns each block on or off: the scores, the chart,
+the pacing row, Logged today, the pot, the backup reminder. The date and the
+things still to log always stay, since without them there is no app.
+
+The two scores sit side by side and small. Stacked full width tiles took four
+hundred pixels to say two numbers, and one above the other made them read as a
+list rather than as a pair to compare — which matters here, because they point
+in opposite directions. The method line that used to sit under each one lives
+in the panel behind the chevron.
+
 ## The score panels
 
 Tapping either number on Home opens its own panel: the score over the last

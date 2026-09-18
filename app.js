@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.19.0";
+var VERSION = "v1.20.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -394,6 +394,8 @@ var state = {
   custom: [],
   retired: {},
   pay: { on: true, win: 0.20, pacing1: 0.25, pacing0: 0.50 },
+  home: { scores: true, chart: true, pacing: true, done: true, pot: true, backup: true,
+          chartStyle: "rows" },
   purchases: []
 };
 
@@ -430,6 +432,8 @@ function loadStore() {
     state.retired = parsed.retired || {};
     state.pay = Object.assign({ on: true, win: 0.20, pacing1: 0.25, pacing0: 0.50 }, parsed.pay || {});
     state.purchases = parsed.purchases || [];
+    state.home = Object.assign({ scores: true, chart: true, pacing: true, done: true,
+      pot: true, backup: true, chartStyle: "rows" }, parsed.home || {});
     rebuildItems();
   } catch (e) {
     state.storeOk = false;
@@ -445,7 +449,7 @@ function saveNow() {
       version: STORE_VERSION, days: state.days, baselines: state.baselines,
       lastBackupAt: state.lastBackupAt, chartKeys: state.chartKeys,
       hidden: state.hidden, custom: state.custom, retired: state.retired, pay: state.pay,
-      purchases: state.purchases
+      purchases: state.purchases, home: state.home
     }));
     if (!state.storeOk) { state.storeOk = true; state.storeMsg = ""; renderBanner(); }
     flash("Saved");
@@ -1321,7 +1325,10 @@ function openMorning(date) {
 function dueCard(title, sub, onclick, extra) {
   return el("div", { class: "card due" }, [
     el("button", { class: "card-main", type: "button", onclick: onclick }, [
-      el("div", { class: "card-title", text: title }),
+      el("div", { class: "card-line" }, [
+        el("span", { class: "card-title", text: title }),
+        el("span", { class: "card-arrow", text: "\u203a" })
+      ]),
       el("div", { class: "card-sub", text: sub })
     ])
   ].concat(extra ? [extra] : []));
@@ -1338,73 +1345,115 @@ function doneLine(text, onclick) {
 }
 
 /* The week in one number, plus how it compares with the week before. */
-function scoreTile() {
-  var t = today();
-  var now = weekScore(t);
-  var box = el("button", { class: "score tappable", type: "button",
-    onclick: function () { state.detail = "week"; state.tab = "detail"; render(); } });
-  if (now.score === null) {
-    box.appendChild(el("div", { class: "score-label", text: "Week score" }));
-    box.appendChild(el("div", { class: "score-wait",
-      text: now.days === 0 ? "Needs a few logged days" : "Needs 3 logged days, has " + now.days }));
-    return box;
-  }
-  var band = [scoreHue(now.score), now.score >= 85 ? "at or near your normal"
-    : now.score >= 70 ? "somewhat below your normal" : "well below your normal"];
-  var head = el("div", { class: "score-head" }, [
-    el("span", { class: "score-num", text: String(now.score) }),
-    el("span", { class: "score-band", text: band[1] }),
-    el("span", { class: "score-arrow", text: "\u203a" })
+/* The two scores side by side and small. Stacked full width tiles took four
+   hundred pixels to say two numbers, and being one above the other made them
+   read as a list rather than as a pair to compare. The method line that used
+   to sit under each one lives in the panel behind the chevron. */
+function miniScore(label, value, hue, word, onclick) {
+  var num = el("span", { class: "num", text: value === null ? "\u2013" : String(value) });
+  num.style.color = hue;
+  return el("button", { class: "mini-score", type: "button", onclick: onclick }, [
+    el("div", { class: "cap" }, [
+      el("span", { text: label }),
+      el("span", { class: "arrow", text: "\u203a" })
+    ]),
+    el("div", { class: "val" }, [num, el("span", { class: "word", text: word })])
   ]);
-  head.querySelector(".score-num").style.color = band[0];
-  box.appendChild(el("div", { class: "score-label", text: "Week score" }));
-  box.appendChild(head);
-
-  var before = weekScore(shiftDay(t, -7));
-  var line = "Against your own baseline, recent days weighted";
-  if (before.score !== null) {
-    var d = now.score - before.score;
-    line = (d === 0 ? "Level with" : Math.abs(d) + " " + (d > 0 ? "better than" : "worse than")) +
-      " the week before · " + line;
-  }
-  box.appendChild(el("div", { class: "score-cap", text: line }));
-  return box;
 }
 
-/* What the next day or two are exposed to. */
-function pemTile() {
+function scorePair() {
   var t = today();
-  var now = pemRisk(t);
-  var box = el("button", { class: "score tappable", type: "button",
-    onclick: function () { state.detail = "pem"; state.tab = "detail"; render(); } });
-  box.appendChild(el("div", { class: "score-label", text: "PEM predictor" }));
-  if (now.risk === null) {
-    box.appendChild(el("div", { class: "score-wait",
-      text: "Needs 2 of the last 4 days, has " + now.days }));
-    return box;
-  }
-  var band = [scoreHue(100 - now.risk),
-    now.risk <= 20 ? "low" : now.risk <= 40 ? "raised" : "high"];
-  var head = el("div", { class: "score-head" }, [
-    el("span", { class: "score-num", text: String(now.risk) }),
-    el("span", { class: "score-band", text: band[1] }),
-    el("span", { class: "score-arrow", text: "\u203a" })
+  var week = weekScore(t);
+  var pem = pemRisk(t);
+  return el("div", { class: "score-pair" }, [
+    miniScore("Week score", week.score,
+      week.score === null ? "var(--dim)" : scoreHue(week.score),
+      week.score === null ? "not enough days" :
+        week.score >= 85 ? "near normal" : week.score >= 70 ? "below normal" : "well below",
+      function () { state.detail = "week"; state.tab = "detail"; render(); }),
+    miniScore("PEM risk", pem.risk,
+      pem.risk === null ? "var(--dim)" : scoreHue(100 - pem.risk),
+      pem.risk === null ? "not enough days" :
+        pem.risk <= 20 ? "low" : pem.risk <= 40 ? "raised" : "high",
+      function () { state.detail = "pem"; state.tab = "detail"; render(); })
   ]);
-  head.querySelector(".score-num").style.color = band[0];
-  box.appendChild(head);
+}
 
-  var reading;
-  if (now.risk <= 20) {
-    reading = "The last few days asked no more of you than usual.";
-  } else {
-    var holding = symptomsHoldingUp(t);
-    reading = holding === false
-      ? "It is already showing in your symptoms."
-      : "PEM usually lands 12 to 48 hours later — the next day or two are the exposed part.";
-  }
-  box.appendChild(el("div", { class: "score-cap",
-    text: reading + " · demand, pacing and sleep over 4 days, a rule of thumb" }));
-  return box;
+/* One row per variable: a name, its own small chart, and today's figure.
+
+   This is the answer to the three line cap. Overlaid lines have to be told
+   apart by hue, and at the brightness this screen can take, a fourth hue
+   collapses into one of the others — so three was the honest ceiling. Give
+   each variable its own row and the question never arises: nothing has to be
+   distinguished from anything, and the list can be as long as you like.
+
+   What it gives up is seeing two lines cross, which is the whole point of
+   exertion against symptoms. Lines mode is still there for that. */
+var SPARK_HUES = ["#C4714C", "#6890C6", "#8FB49B", "#C9A45C", "#7FBF97", "#D08A6B",
+                  "#A9B3BD", "#CE7A54"];
+
+function sparkRows(picked, dates, data) {
+  var wrap = el("div", { class: "sparks" });
+  var W = 200, H = 30, pad = 3;
+  var ns = "http://www.w3.org/2000/svg";
+  var x = function (i) { return pad + (W - pad * 2) * i / (dates.length - 1); };
+  var y = function (v) { return pad + (H - pad * 2) * (1 - v / 100); };
+
+  picked.forEach(function (def, si) {
+    var colour = SPARK_HUES[si % SPARK_HUES.length];
+    var vals = data[si];
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("class", "spark-svg");
+    function node(name, attrs) {
+      var n = document.createElementNS(ns, name);
+      Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+      return n;
+    }
+    svg.appendChild(node("line", { x1: pad, x2: W - pad, y1: y(0), y2: y(0),
+      stroke: "#252D36", "stroke-width": 0.8 }));
+    var run = [];
+    function flush() {
+      if (run.length > 1) {
+        svg.appendChild(node("path", {
+          d: "M" + run.map(function (p) { return p[0] + " " + p[1]; }).join("L"),
+          fill: "none", stroke: colour, "stroke-width": 1.8,
+          "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      }
+      run = [];
+    }
+    vals.forEach(function (v, i) {
+      if (v === null) { flush(); return; }
+      run.push([x(i), y(v)]);
+    });
+    flush();
+    vals.forEach(function (v, i) {
+      if (v === null) return;
+      svg.appendChild(node("circle", { cx: x(i), cy: y(v), r: 2.2, fill: colour,
+        stroke: "#171C22", "stroke-width": 1 }));
+    });
+
+    var last = null;
+    for (var i = vals.length - 1; i >= 0; i--) { if (vals[i] !== null) { last = i; break; } }
+    var shown = "\u2013";
+    if (last !== null) {
+      var e = settledEntry(dates[last]);
+      var raw = e && def.raw ? def.raw(e) : null;
+      shown = raw === null || raw === undefined ? String(vals[last]) : String(raw);
+    }
+    var row = el("button", { class: "spark-row", type: "button",
+      "aria-label": def.label + ", last 14 days",
+      onclick: function () { if (last !== null) openEvening(dates[last]); } }, [
+      el("span", { class: "spark-name", text: def.label })
+    ]);
+    row.appendChild(svg);
+    var now = el("span", { class: "spark-now", text: shown });
+    now.style.color = colour;
+    row.appendChild(now);
+    wrap.appendChild(row);
+  });
+  return wrap;
 }
 
 /* Fourteen days of whichever lines you pick, everything scaled to 0-100 with
@@ -1464,13 +1513,16 @@ function seriesDefs() {
   return defs;
 }
 
+function rowsMode() { return state.home.chartStyle !== "lines"; }
+function lineCap() { return rowsMode() ? 99 : MAX_LINES; }
+
 function activeSeries() {
   var defs = seriesDefs();
   var out = [];
   (state.chartKeys || []).forEach(function (k) {
     for (var i = 0; i < defs.length; i++) if (defs[i].key === k) { out.push(defs[i]); return; }
   });
-  return out.slice(0, MAX_LINES);
+  return out.slice(0, lineCap());
 }
 
 function chart() {
@@ -1489,6 +1541,22 @@ function chart() {
         return e ? def.value(e) : null;
       });
     });
+
+    if (rowsMode()) {
+      if (!picked.length) {
+        host.appendChild(el("div", { class: "hint", text: "Pick something to show below." }));
+      } else {
+        host.appendChild(sparkRows(picked, dates, data));
+      }
+      host.appendChild(el("div", { class: "chart-foot" }, [
+        el("span", { class: "item", text: "0-100, up is worse · 14 days" }),
+        el("button", { class: "lines", type: "button",
+          text: (pickerOpen ? "done" : "choose variables") + " \u203a",
+          onclick: function () { pickerOpen = !pickerOpen; paint(); } })
+      ]));
+      if (pickerOpen) host.appendChild(picker());
+      return;
+    }
 
     var W = 320, H = 116, padL = 6, padR = 6, padT = 10, padB = 10;
     var plotW = W - padL - padR, plotH = H - padT - padB;
@@ -1610,40 +1678,44 @@ function chart() {
     paintReadout();
     host.appendChild(readout);
 
-    /* line picker */
-    var msg = el("div", { class: "msg", style: { display: "none" } });
-    var toggle = el("button", { class: "quiet-btn", type: "button",
-      text: pickerOpen ? "Done choosing lines" : "Change lines",
-      onclick: function () { pickerOpen = !pickerOpen; paint(); } });
-    host.appendChild(toggle);
+    host.appendChild(el("div", { class: "chart-foot" }, [
+      el("button", { class: "lines", type: "button",
+        text: (pickerOpen ? "done" : "choose variables") + " \u203a",
+        onclick: function () { pickerOpen = !pickerOpen; paint(); } })
+    ]));
+    if (pickerOpen) host.appendChild(picker());
+  }
 
-    if (pickerOpen) {
-      var chips = el("div", { class: "tags picker" });
-      seriesDefs().forEach(function (def) {
-        var on = (state.chartKeys || []).indexOf(def.key) >= 0;
-        chips.appendChild(el("button", {
-          type: "button", text: def.label, "aria-pressed": on ? "true" : "false",
-          onclick: function () {
-            var keys = (state.chartKeys || []).slice();
-            var at = keys.indexOf(def.key);
-            if (at >= 0) {
-              keys.splice(at, 1);
-            } else if (keys.length >= MAX_LINES) {
-              msg.textContent = "Three lines at a time — past that the colours stop being reliably different.";
-              msg.style.display = "";
-              return;
-            } else {
-              keys.push(def.key);
-            }
-            state.chartKeys = keys;
-            saveNow();
-            paint();
+  function picker() {
+    var box = el("div");
+    var msg = el("div", { class: "msg", style: { display: "none" } });
+    var chips = el("div", { class: "tags picker" });
+    seriesDefs().forEach(function (def) {
+      var on = (state.chartKeys || []).indexOf(def.key) >= 0;
+      chips.appendChild(el("button", {
+        type: "button", text: def.label, "aria-pressed": on ? "true" : "false",
+        onclick: function () {
+          var keys = (state.chartKeys || []).slice();
+          var at = keys.indexOf(def.key);
+          if (at >= 0) {
+            keys.splice(at, 1);
+          } else if (keys.length >= lineCap()) {
+            msg.textContent = "Three at a time as lines — past that the colours stop being "
+              + "reliably different. Switch to rows in Settings for as many as you like.";
+            msg.style.display = "";
+            return;
+          } else {
+            keys.push(def.key);
           }
-        }));
-      });
-      host.appendChild(chips);
-      host.appendChild(msg);
-    }
+          state.chartKeys = keys;
+          saveNow();
+          paint();
+        }
+      }));
+    });
+    box.appendChild(chips);
+    box.appendChild(msg);
+    return box;
   }
 
   paint();
@@ -1686,26 +1758,27 @@ function pacingRow() {
     grid.appendChild(cell);
   });
 
-  return el("div", { class: "grid-wrap" }, [
-    grid,
-    el("div", { class: "strip-cap", text: "Pacing, low is better · 0 and 1 both pay" })
-  ]);
+  return el("div", { class: "grid-wrap" }, [grid]);
 }
 
 function backupLine() {
   var last = state.lastBackupAt;
   var text, stale;
   if (!last) {
-    text = "No backup yet — download the JSON in History";
+    text = "never";
     stale = true;
   } else {
     var days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
-    text = "Backed up " + (days === 0 ? "today" : days === 1 ? "yesterday" : days + " days ago");
+    text = days === 0 ? "today" : days === 1 ? "yesterday" : days + " days ago";
     stale = days >= 14;
-    if (stale) text += " — worth doing again";
   }
-  return el("button", { class: "backup" + (stale ? " stale" : ""), type: "button", text: text,
-    onclick: function () { state.tab = "history"; render(); } });
+  var btn = el("button", { class: "backup" + (stale ? " stale" : ""), type: "button",
+    onclick: function () { state.tab = "history"; render(); } }, [
+    el("span", { class: "foot-label", text: "Backup" }),
+    el("span", { class: "foot-value", text: text })
+  ]);
+  if (stale) btn.querySelector(".foot-value").style.color = "var(--warn)";
+  return btn;
 }
 
 function homeScreen() {
@@ -1720,8 +1793,12 @@ function homeScreen() {
 
   wrap.appendChild(el("div", { class: "home-head" }, [
     el("span", { text: pretty(t) }),
-    el("span", { class: "sub", text: eveDone && nightDone ? " · all logged" : "" })
+    el("span", { class: "sub", text: eveDone && nightDone ? " · all logged"
+      : eveDone ? " · night still to log" : nightDone ? " · evening still to log" : "" })
   ]));
+
+  if (state.home.scores) wrap.appendChild(scorePair());
+  wrap.appendChild(el("h2", { class: "home-band", text: "To log" }));
 
   /* The evening belongs to the evening. Before then the card is out of the
      way, but the screen is still one tap from here — a card that only exists
@@ -1803,27 +1880,54 @@ function homeScreen() {
   paintWins();
   wrap.appendChild(winBox);
 
-  /* The note written for yourself last night. */
-  if (night && night.nightNote && !nightDone) {
-    wrap.appendChild(el("div", { class: "note-card" }, [
-      el("div", { class: "note-card-head", text: "You wrote this last night" }),
-      el("div", { class: "note-card-body", text: night.nightNote })
-    ]));
+  if (state.home.chart || state.home.pacing) {
+    wrap.appendChild(el("h2", { class: "home-band", text: "Last 14 days" }));
+    if (state.home.chart) wrap.appendChild(chart());
+    if (state.home.pacing) {
+      wrap.appendChild(pacingRow());
+      wrap.appendChild(pacingStreak());
+    }
   }
 
-  wrap.appendChild(el("div", { class: "spacer" }));
-  wrap.appendChild(scoreTile());
-  wrap.appendChild(pemTile());
-  wrap.appendChild(chart());
-  wrap.appendChild(pacingRow());
-  done.forEach(function (c) { wrap.appendChild(c); });
-  wrap.appendChild(el("button", { class: "pot-line", type: "button",
-    onclick: function () { state.tab = "rlhf"; render(); } }, [
-    el("span", { text: state.pay.on ? "In the pot" : "Things done well" }),
-    el("span", { class: "pot-amount", text: state.pay.on ? euro(potTotal()) : String(winTotal()) })
-  ]));
-  wrap.appendChild(backupLine());
+  /* One quiet group at the foot instead of three strays of different shapes. */
+  if (state.home.done && done.length) {
+    wrap.appendChild(el("h2", { class: "home-band", text: "Logged today" }));
+    done.forEach(function (c) { wrap.appendChild(c); });
+  }
+
+  var feet = [];
+  if (state.home.pot) {
+    feet.push(el("button", { type: "button",
+      onclick: function () { state.tab = "rlhf"; render(); } }, [
+      el("span", { class: "foot-label", text: state.pay.on ? "In the pot" : "Things done well" }),
+      el("span", { class: "foot-value",
+        text: state.pay.on ? euro(potTotal()) : String(winTotal()) })
+    ]));
+  }
+  if (state.home.backup) feet.push(backupLine());
+  if (feet.length) {
+    wrap.appendChild(el("div", { class: "footer-row" }, feet));
+  }
   return wrap;
+}
+
+/* The streak is the point of keeping pacing in view: it is the one row that
+   rewards a run of good days rather than only reporting them. */
+function pacingStreak() {
+  var t = today(), paced = 0, logged = 0, pay = 0;
+  for (var i = 0; i < 7; i++) {
+    var e = settledEntry(shiftDay(t, -i));
+    if (!e || !itemCounts(e, "pacing") || e.v.pacing === undefined) continue;
+    logged++;
+    if (e.v.pacing <= 1) paced++;
+    pay += pacingPay(e);
+  }
+  if (!logged) return el("div", { class: "strip-cap", text: "0 and 1 both pay" });
+  var text = paced + " paced " + (paced === 1 ? "day" : "days") + " in the last " + logged;
+  if (state.pay.on && pay > 0) text += " · " + euro(pay) + " from pacing";
+  var line = el("div", { class: "streak", text: text });
+  if (paced === 0) line.style.color = "var(--dim)";
+  return line;
 }
 
 /* ---------- evening ---------- */
@@ -2066,10 +2170,24 @@ var SETTINGS_PAGES = [
   { key: "baselines", title: "Baselines", blurb: "Your normal value for each item" },
   { key: "track", title: "What to track", blurb: "Hide items, or add your own" },
   { key: "sleep", title: "Sleep", blurb: "Hours you normally need" },
-  { key: "rewards", title: "Rewards", blurb: "What a win and pacing pay" }
+  { key: "rewards", title: "Rewards", blurb: "What a win and pacing pay" },
+  { key: "home", title: "Home screen", blurb: "Which blocks show, and the chart style" }
+];
+
+var HOME_BLOCKS = [
+  { key: "scores", label: "Week score and PEM risk" },
+  { key: "chart", label: "The 14 day chart" },
+  { key: "pacing", label: "Pacing row and streak" },
+  { key: "done", label: "Logged today" },
+  { key: "pot", label: "In the pot" },
+  { key: "backup", label: "Backup reminder" }
 ];
 
 function settingsValue(key) {
+  if (key === "home") {
+    var off = HOME_BLOCKS.filter(function (b) { return !state.home[b.key]; }).length;
+    return off ? off + " hidden" : "all shown";
+  }
   if (key === "sleep") return (state.baselines.hoursTarget || 8) + "h";
   if (key === "rewards") return state.pay.on ? euro(state.pay.win) + " a win" : "off";
   if (key === "track") {
@@ -2097,6 +2215,7 @@ function baselineScreen() {
   else if (page === "track") settingsTrack(wrap);
   else if (page === "sleep") settingsSleep(wrap);
   else if (page === "rewards") settingsRewards(wrap);
+  else if (page === "home") settingsHome(wrap);
 
   wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Back to settings",
     onclick: function () { state.settings = null; render(); } }));
@@ -2294,6 +2413,46 @@ function settingsRewards(wrap) {
   }
 }
 
+function settingsHome(wrap) {
+  wrap.appendChild(el("div", { class: "hint",
+    text: "What Home shows. The date and the things still to log always stay." }));
+  HOME_BLOCKS.forEach(function (bl) {
+    var off = !state.home[bl.key];
+    wrap.appendChild(el("button", { class: "track-row" + (off ? " off" : ""), type: "button",
+      onclick: function () { state.home[bl.key] = off; saveNow(); render(true); }
+    }, [
+      el("span", { class: "track-name-plain" }, [
+        el("span", { text: bl.label }),
+        el("span", { class: "track-state", text: off ? "hidden" : "shown" })
+      ])
+    ]));
+  });
+
+  wrap.appendChild(el("div", { class: "section-head", text: "Chart style" }));
+  [["rows", "Rows", "One small chart per variable. As many as you like."],
+   ["lines", "Lines", "All on one chart, so you can see them cross. Three at a time."]]
+    .forEach(function (opt) {
+      var on = (state.home.chartStyle || "rows") === opt[0];
+      wrap.appendChild(el("button", { class: "track-row" + (on ? "" : " off"), type: "button",
+        onclick: function () {
+          state.home.chartStyle = opt[0];
+          /* Dropping to lines has to drop the extras, or the cap would be a
+             lie the moment it mattered. */
+          if (opt[0] === "lines" && (state.chartKeys || []).length > MAX_LINES) {
+            state.chartKeys = state.chartKeys.slice(0, MAX_LINES);
+          }
+          saveNow(); render(true);
+        }
+      }, [
+        el("span", { class: "track-name-plain" }, [
+          el("span", { text: opt[1] }),
+          el("span", { class: "track-state", text: on ? "on" : "" })
+        ])
+      ]));
+      wrap.appendChild(el("div", { class: "note-line", text: opt[2] }));
+    });
+}
+
 function bandName(band) {
   return band === "exertion" ? "Exertion" : band === "night" ? "Night" : "Symptoms";
 }
@@ -2304,7 +2463,8 @@ function backupJson() {
   return JSON.stringify({
     app: "daily-log", version: STORE_VERSION, exportedAt: new Date().toISOString(),
     baselines: state.baselines, hidden: state.hidden, custom: state.custom,
-    retired: state.retired, pay: state.pay, purchases: state.purchases, days: state.days
+    retired: state.retired, pay: state.pay, purchases: state.purchases,
+    home: state.home, days: state.days
   }, null, 2);
 }
 
@@ -2379,6 +2539,7 @@ function restore(parsed) {
   if (parsed.hidden) state.hidden = parsed.hidden;
   if (parsed.retired) state.retired = parsed.retired;
   if (parsed.pay) state.pay = Object.assign({}, state.pay, parsed.pay);
+  if (parsed.home) state.home = Object.assign({}, state.home, parsed.home);
   /* Purchases are a flat list, so merge by id rather than replacing: restoring
      an older backup must not wipe spending recorded since. */
   if (parsed.purchases) {
