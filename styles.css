@@ -617,3 +617,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   line-height: 1.2;
   color: var(--dim);
 }
+
+/* What a band's numbers mean, said once. */
+.band-legend {
+  font-size: 12px;
+  color: var(--dim);
+  margin: -6px 0 14px;
+}
+
+/* One line of detail against the exertion row it belongs to. */
+.detail-field { margin-top: 6px; font-size: 14px; }
+
+/* The browser's default focus ring is white, which is exactly the glare this
+   palette exists to avoid. */
+input:focus, textarea:focus, button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

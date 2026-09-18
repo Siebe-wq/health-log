@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.15.0";
+var VERSION = "v1.16.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -95,6 +95,20 @@ function valenceFill(delta) {
    and the bad one for pacing despite both being about doing well. */
 var SCALE_SEVERITY = ["none", "mild", "moderate", "severe"];
 var SCALE_DEMAND = ["none", "a little", "a fair bit", "a lot"];
+
+/* Read once under the band header rather than repeated under all sixteen
+   rows. Only the scales that cannot be inferred from their neighbours — sleep,
+   pacing, the 0-5 episode — carry their words per row. */
+var BAND_SCALE = {
+  Symptoms: SCALE_SEVERITY,
+  Exertion: SCALE_DEMAND
+};
+function bandLegend(band) {
+  var words = BAND_SCALE[band];
+  if (!words) return null;
+  return el("div", { class: "band-legend",
+    text: words.map(function (w, i) { return i + " " + w; }).join("  ·  ") });
+}
 var SCALE_SLEEP = ["awful", "poor", "ok", "good"];
 var SCALE_PACING = ["paced well", "slipped", "pushed", "pushed hard"];
 var SCALE_EPISODE = ["none", "slight", "mild", "clear", "strong", "severe"];
@@ -103,40 +117,38 @@ var SCALE_EPISODE = ["none", "slight", "mild", "clear", "strong", "severe"];
 
 var BUILTIN_SECTIONS = [
   { title: "Energy", band: "Symptoms", items: [
-    { key: "tired", label: "Feeling tired / sluggish", scale: SCALE_SEVERITY },
-    { key: "pem", label: "PEM", scale: SCALE_SEVERITY },
+    { key: "tired", label: "Feeling tired / sluggish" },
+    { key: "pem", label: "PEM" },
     { key: "crash", label: "Crash", max: 1, labels: ["no", "yes"] }
   ]},
   { title: "Brain", items: [
     { key: "mood", label: "Mood", max: 4, ramp: MOOD_RAMP,
       labels: ["happy", "good", "neutral", "meh", "bad"] },
-    { key: "brainFog", label: "Brain fog", scale: SCALE_SEVERITY },
-    { key: "headache", label: "Headache", scale: SCALE_SEVERITY },
-    { key: "noise", label: "Noise sensitivity", scale: SCALE_SEVERITY }
+    { key: "brainFog", label: "Brain fog" },
+    { key: "headache", label: "Headache" },
+    { key: "noise", label: "Noise sensitivity" }
   ]},
   { title: "Body", items: [
-    { key: "muscleAches", label: "Muscle burn", scale: SCALE_SEVERITY },
-    { key: "muscleWeakness", label: "Muscle weakness", scale: SCALE_SEVERITY },
-    { key: "breath", label: "Shortness of breath", scale: SCALE_SEVERITY },
-    { key: "soreThroat", label: "Sore throat", scale: SCALE_SEVERITY },
-    { key: "sweating", label: "Sweating / thermal dysregulation", scale: SCALE_SEVERITY },
-    { key: "hyper", label: "Hyper / sympathetic overdrive", scale: SCALE_SEVERITY },
-    { key: "mcas", label: "MCAS", scale: SCALE_SEVERITY }
+    { key: "muscleAches", label: "Muscle burn" },
+    { key: "muscleWeakness", label: "Muscle weakness" },
+    { key: "breath", label: "Shortness of breath" },
+    { key: "soreThroat", label: "Sore throat" },
+    { key: "sweating", label: "Sweating / thermal dysregulation" },
+    { key: "hyper", label: "Hyper / sympathetic overdrive" },
+    { key: "mcas", label: "MCAS" }
   ]},
   { title: "Gut", items: [
-    { key: "constipation", label: "Constipation", scale: SCALE_SEVERITY },
-    { key: "diarrhea", label: "Diarrhea", scale: SCALE_SEVERITY },
-    { key: "indigestion", label: "Post-dinner indigestion", scale: SCALE_SEVERITY }
-  ]},
-  { title: "Anything else", items: [
-    { key: "other", label: "Other", scale: SCALE_SEVERITY }
+    { key: "constipation", label: "Constipation" },
+    { key: "diarrhea", label: "Diarrhea" },
+    { key: "indigestion", label: "Post-dinner indigestion" }
   ]},
   { title: "What the day asked of you", band: "Exertion", items: [
-    { key: "physical", label: "Physically active", scale: SCALE_DEMAND },
-    { key: "orthostatic", label: "Orthostatic exertion", scale: SCALE_DEMAND },
-    { key: "mental", label: "Mentally demanding", scale: SCALE_DEMAND },
-    { key: "social", label: "Socially demanding", scale: SCALE_DEMAND },
-    { key: "emotional", label: "Emotionally stressful", scale: SCALE_DEMAND },
+    { key: "physical", label: "Physically active" },
+    { key: "orthostatic", label: "Orthostatic exertion" },
+    { key: "mental", label: "Mentally demanding" },
+    { key: "social", label: "Socially demanding" },
+    { key: "emotional", label: "Emotionally stressful" },
+    { key: "other", label: "Other" },
     { key: "pacing", label: "Pacing", ramp: PACING_RAMP, scale: SCALE_PACING }
   ]}
 ];
@@ -160,7 +172,8 @@ var EVENING_SECTIONS, EVENING_ITEMS, MORNING_ITEMS, ALL_ITEMS, ITEM_BY_KEY,
     EVENING_KEYS, ALL_KEYS, MORNING_KEYS, CARRY_KEYS,
     LOAD_KEYS, SCORE_ITEMS, DEMAND_ITEMS, MIN_SCORED, MIN_LOAD_ITEMS;
 
-var BUILTIN_LOAD_KEYS = ["physical", "orthostatic", "mental", "social", "emotional", "pacing"];
+var BUILTIN_LOAD_KEYS = ["physical", "orthostatic", "mental", "social", "emotional",
+  "other", "pacing"];
 
 function customItems(band) {
   return (state.custom || []).filter(function (c) { return c.band === band; })
@@ -275,7 +288,8 @@ var EXPORT_NAME = {
   headache: "Headache", noise: "Noise sensitivity", muscleAches: "Muscle aches",
   muscleWeakness: "Muscle weakness", breath: "Shortness of breath",
   soreThroat: "Sore throat", sweating: "Sweating & thermal dysregulation",
-  hyper: "Hyper/sympathetic overdrive", mcas: "MCAS", other: "Other",
+  hyper: "Hyper/sympathetic overdrive", mcas: "MCAS",
+  other: "Other exertion",
   constipation: "Constipation",
   diarrhea: "Diarrhea", indigestion: "Post-dinner indigestion",
   physical: "Physically active", orthostatic: "Orthostatic exertion",
@@ -438,7 +452,7 @@ function emptyEntry(date) {
   return {
     date: date, v: baselineValues(), touched: {},
     lastBite: "", stomach: "", sleepHours: "", wins: [], tags: [],
-    note: "", exertionNote: "", nightNote: "",
+    note: "", detail: {}, nightNote: "",
     complete: false, morningDone: false, savedAt: null, updatedAt: null
   };
 }
@@ -1827,26 +1841,66 @@ function eveningScreen() {
     counter.textContent = n + (n === 1 ? " item" : " items") + " away from baseline";
   }
 
+  /* One line box under whichever exertion row was tapped last, so the detail
+     lands against the thing it describes. A row that already has text keeps
+     its box, otherwise saved detail would be invisible. */
+  var detailKey = null;
+  var detailSlots = [];
+  function paintDetails() {
+    detailSlots.forEach(function (d) {
+      var text = (getEntry(date).detail || {})[d.key] || "";
+      var want = d.key === detailKey || text !== "";
+      if (!want) { d.slot.innerHTML = ""; return; }
+      if (d.slot.firstChild) return;
+      var field = el("input", { type: "text", class: "detail-field",
+        placeholder: "What was it? (optional)" });
+      field.value = text;
+      field.addEventListener("input", function () {
+        update(date, function (e) {
+          if (!e.detail) e.detail = {};
+          e.detail[d.key] = field.value;
+        });
+        saveSoon();
+      });
+      d.slot.appendChild(field);
+      if (d.key === detailKey) field.focus();
+    });
+  }
+
   var band = null;
   EVENING_SECTIONS.forEach(function (sec) {
+    var exertionBand = sec.band === "Exertion" || band === "Exertion";
     if (sec.band && sec.band !== band) {
       band = sec.band;
       wrap.appendChild(el("h2", { class: "band", text: band }));
+      var legend = bandLegend(band);
+      if (legend) wrap.appendChild(legend);
     }
     var kids = sec.items.map(function (it) {
+      var isExertion = exertionBand;
+      var host = el("div");
       var row = ratingRow(it,
         function () { return getEntry(date).v[it.key]; },
         function (n) {
           update(date, function (e) { e.v[it.key] = n; e.touched[it.key] = true; });
           saveNow();
+          if (isExertion) { detailKey = it.key; paintDetails(); }
+          paintCounter();
         },
         function () { return state.baselines[it.key]; },
-        paintCounter);
+        isExertion ? null : paintCounter);
       rows.push(row);
-      return row.el;
+      host.appendChild(row.el);
+      if (isExertion) {
+        var slot = el("div");
+        host.appendChild(slot);
+        detailSlots.push({ key: it.key, slot: slot });
+      }
+      return host;
     });
     wrap.appendChild(section(sec.title, kids));
   });
+  paintDetails();
 
   /* bedtime */
   var bite = el("input", { type: "time", value: entry.lastBite || "" });
@@ -1854,17 +1908,6 @@ function eveningScreen() {
     update(date, function (e) { e.lastBite = bite.value; });
     saveSoon(200);
   });
-  if (EVENING_SECTIONS.some(function (sec) { return sec.band === "Exertion"; })) {
-    var exNote = el("textarea", { rows: "2",
-      placeholder: "Which bits took it out of you?" });
-    exNote.value = entry.exertionNote || "";
-    exNote.addEventListener("input", function () {
-      update(date, function (e) { e.exertionNote = exNote.value; });
-      saveSoon();
-    });
-    wrap.appendChild(section("What it was (optional)", [exNote]));
-  }
-
   /* Neither a symptom nor something the day asked of you, so it gets its own
      band rather than sitting under Exertion by accident. */
   wrap.appendChild(el("h2", { class: "band", text: "Bedtime and notes" }));
@@ -2190,6 +2233,10 @@ function backupCsv() {
       rows.push([d, "Done well", "Custom", w.text || "logged", ""]);
     });
     if (e.tags && e.tags.length) rows.push([d, "Tags", "Note", e.tags.join("|"), ""]);
+    Object.keys(e.detail || {}).forEach(function (k) {
+      if (e.detail[k]) rows.push([d, exportNameFor(k) + " note", "Note", e.detail[k], ""]);
+    });
+    /* v1.14.0 had one note for the whole band; it still exports where it exists. */
     if (e.exertionNote) rows.push([d, "Exertion note", "Note", e.exertionNote, ""]);
     if (e.note) rows.push([d, "Note", "Note", e.note, ""]);
     if (e.nightNote) rows.push([d, "Night note", "Note", e.nightNote, ""]);

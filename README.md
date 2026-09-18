@@ -372,31 +372,47 @@ without a signal.
 
 ## What the numbers mean
 
-Every rated row carries its anchors under the buttons, one word per button, so
-the scale is never something to remember. Four sets cover everything:
+Said once where a scale can be inferred, and per row only where it cannot.
+
+**Under the band header**, read once for the sixteen symptom rows and once for
+the exertion rows:
 
 ```
-severity   none · mild · moderate · severe
-demand     none · a little · a fair bit · a lot
-sleep      awful · poor · ok · good
-pacing     paced well · slipped · pushed · pushed hard
-episode    none · slight · mild · clear · strong · severe   (0-5)
+Symptoms   0 none · 1 mild · 2 moderate · 3 severe
+Exertion   0 none · 1 a little · 2 a fair bit · 3 a lot
 ```
+
+**Under the buttons**, for the three scales that cannot be read off their
+neighbours:
+
+```
+sleep quality   awful · poor · ok · good        (3 is the good end)
+pacing          paced well · slipped · pushed · pushed hard
+episode         none · slight · mild · clear · strong · severe   (0-5)
+```
+
+Sleep quality and pacing are the two that genuinely invert. Pacing used to say
+so in its label — "(low = better)" — which is a parenthetical doing work the
+scale should do. The label is now just Pacing; it still exports as
+`Pacing (low = better)`, the name the history uses.
 
 Rows whose buttons already carry words — the no/yes pairs and Mood — get
 nothing extra.
 
-**Two scales genuinely invert**, which is why this was worth doing rather than
-trusting the numbers:
+## Detail on an exertion row
 
-- **Sleep quality**: 3 is a good night, the opposite of every symptom.
-- **Pacing**: a high number means you paced *badly*. It used to say so in the
-  label, "(low = better)", which is a parenthetical doing work the scale should
-  do. The label is now just Pacing and the anchors carry it. It still exports
-  as `Pacing (low = better)`, the name the history uses.
+Tapping a rating on an exertion row opens a one line box under it for what that
+particular thing was: "Socially demanding 2 — video call with mum". Only the
+row tapped last shows an empty box, so the screen stays quiet, but any row that
+already has text keeps its box visible rather than hiding what was written.
 
-Your own items inherit the anchors of the band they sit in: severity in
-Symptoms and Night, demand in Exertion.
+Each line exports as its own row, `<item> note`, so the detail stays attached to
+the category it describes rather than to the day in general. The single
+band-wide note from v1.14.0 is gone, replaced by these; where one was written
+it still exports.
+
+**Other** lives in Exertion rather than Symptoms, which is where the detail box
+makes it usable: a rating for how much it took, and a line saying what it was.
 
 ## Design rules, on purpose
 
