@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.17.0";
+var VERSION = "v1.18.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -364,6 +364,7 @@ var state = {
   lastBackupAt: null,
   chartKeys: ["symptoms", "exertion"],
   detail: "week",
+  settings: null,
   hidden: {},
   custom: [],
   retired: {},
@@ -913,7 +914,7 @@ function rewardsScreen() {
     ]),
     el("div", { class: "score-cap", text: money
       ? "Earned " + euro(earnedTotal()) + " · spent " + euro(spentTotal())
-      : "Paying for them is switched off in Baseline" })
+      : "Paying for them is switched off in Settings" })
   ]));
 
   if (money) wrap.appendChild(el("div", { class: "section" }, [
@@ -2032,10 +2033,77 @@ function morningScreen() {
 /* The setup screen. Baselines were the whole of it once; what is tracked and
    what it pays are settings now too, so they live here behind their own band
    headers rather than in the code. */
-function baselineScreen() {
-  var wrap = el("div");
+/* ---------- settings ---------- */
 
-  wrap.appendChild(el("h2", { class: "band", text: "Baselines" }));
+/* The settings screen is a short menu. Baselines used to sit at the top of it
+   as twenty-odd rating rows, which made everything else feel like a footnote
+   you had to scroll past. Each section is its own page now. */
+var SETTINGS_PAGES = [
+  { key: "baselines", title: "Baselines", blurb: "Your normal value for each item" },
+  { key: "track", title: "What to track", blurb: "Hide items, or add your own" },
+  { key: "sleep", title: "Sleep", blurb: "Hours you normally need" },
+  { key: "rewards", title: "Rewards", blurb: "What a win and pacing pay" }
+];
+
+function settingsValue(key) {
+  if (key === "sleep") return (state.baselines.hoursTarget || 8) + "h";
+  if (key === "rewards") return state.pay.on ? euro(state.pay.win) + " a win" : "off";
+  if (key === "track") {
+    var hidden = Object.keys(state.hidden || {}).filter(function (k) { return state.hidden[k]; }).length;
+    var mine = (state.custom || []).length;
+    var bits = [];
+    if (mine) bits.push(mine + " of your own");
+    if (hidden) bits.push(hidden + " hidden");
+    return bits.length ? bits.join(" · ") : ALL_ITEMS.length + " items";
+  }
+  return "";   /* baselines have no single value worth summarising */
+}
+
+function baselineScreen() {
+  var page = state.settings;
+  if (!page) return settingsMenu();
+  var wrap = el("div");
+  var def = SETTINGS_PAGES.filter(function (x) { return x.key === page; })[0];
+  wrap.appendChild(el("button", { class: "back-btn", type: "button",
+    text: "\u2039  Settings",
+    onclick: function () { state.settings = null; render(); } }));
+  wrap.appendChild(el("h2", { class: "band", text: def ? def.title : "Settings" }));
+
+  if (page === "baselines") settingsBaselines(wrap);
+  else if (page === "track") settingsTrack(wrap);
+  else if (page === "sleep") settingsSleep(wrap);
+  else if (page === "rewards") settingsRewards(wrap);
+
+  wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Back to settings",
+    onclick: function () { state.settings = null; render(); } }));
+  wrap.appendChild(el("div", { class: "note-line",
+    text: "Everything here applies straight away." }));
+  return wrap;
+}
+
+function settingsMenu() {
+  var wrap = el("div");
+  wrap.appendChild(el("div", { class: "hint",
+    text: "How the app is set up. Nothing here changes what you have already logged." }));
+  SETTINGS_PAGES.forEach(function (pg) {
+    wrap.appendChild(el("button", { class: "menu-row", type: "button",
+      onclick: function () { state.settings = pg.key; render(); } }, [
+      el("div", { class: "menu-main" }, [
+        el("div", { class: "menu-title", text: pg.title }),
+        el("div", { class: "menu-blurb", text: pg.blurb })
+      ]),
+      el("div", { class: "menu-side" }, [
+        el("span", { class: "menu-value", text: settingsValue(pg.key) }),
+        el("span", { class: "menu-arrow", text: "\u203a" })
+      ])
+    ]));
+  });
+  wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
+    onclick: function () { state.tab = "home"; render(); } }));
+  return wrap;
+}
+
+function settingsBaselines(wrap) {
   wrap.appendChild(el("div", { class: "hint",
     text: "Your normal value for each item. New days start here, and anything different gets a dot." }));
   ALL_ITEMS.forEach(function (it) {
@@ -2046,7 +2114,9 @@ function baselineScreen() {
     wrap.appendChild(row.el);
   });
 
-  wrap.appendChild(el("h2", { class: "band", text: "Sleep" }));
+}
+
+function settingsSleep(wrap) {
   wrap.appendChild(el("div", { class: "field-label", text: "Hours you normally need" }));
   wrap.appendChild(hoursStepper(
     function () { return state.baselines.hoursTarget; },
@@ -2056,6 +2126,9 @@ function baselineScreen() {
   wrap.appendChild(el("div", { class: "note-line",
     text: "Only sleeping short of this counts against the PEM predictor." }));
 
+}
+
+function settingsTrack(wrap) {
   /* ---- what to track ---- */
   wrap.appendChild(el("h2", { class: "band", text: "What to track" }));
   wrap.appendChild(el("div", { class: "hint",
@@ -2161,9 +2234,12 @@ function baselineScreen() {
       saveNow(); rebuildItems(); render(true);
     }}));
   wrap.appendChild(el("div", { class: "note-line",
-    text: "It joins Baselines above too, so the normal can be changed later." }));
+    text: "It joins the Baselines page too, so the normal can be changed later." }));
   wrap.appendChild(addMsg);
 
+}
+
+function settingsRewards(wrap) {
   /* ---- rewards ---- */
   wrap.appendChild(el("h2", { class: "band", text: "Rewards" }));
   wrap.appendChild(el("button", { class: "track-row", type: "button",
@@ -2192,12 +2268,6 @@ function baselineScreen() {
     wrap.appendChild(el("div", { class: "note-line",
       text: "Wins are still logged and still counted. Only the money is off." }));
   }
-
-  wrap.appendChild(el("button", { class: "btn primary", type: "button", text: "Done",
-    onclick: function () { state.tab = "home"; render(); } }));
-  wrap.appendChild(el("div", { class: "note-line",
-    text: "Everything here applies straight away. Done just takes you back." }));
-  return wrap;
 }
 
 function bandName(band) {
@@ -2400,7 +2470,7 @@ function historyScreen() {
 
 /* Evening and Morning are not permanent tabs. You reach them from Home, and
    the tab only appears while you are on one, so there is a way back. */
-var TABS = [["home", "Home"], ["rlhf", "RLHF"], ["history", "History"], ["baseline", "Baseline"]];
+var TABS = [["home", "Home"], ["rlhf", "RLHF"], ["history", "History"], ["baseline", "Settings"]];
 
 function renderTabs() {
   var nav = document.getElementById("tabs");
@@ -2413,7 +2483,12 @@ function renderTabs() {
     nav.appendChild(el("button", {
       type: "button", role: "tab", text: t[1],
       "aria-selected": state.tab === t[0] ? "true" : "false",
-      onclick: function () { state.tab = t[0]; render(); }
+      onclick: function () {
+        /* Tapping Settings while inside one of its pages comes back out. */
+        if (t[0] === "baseline") state.settings = null;
+        state.tab = t[0];
+        render();
+      }
     }));
   });
 }

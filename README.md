@@ -44,8 +44,11 @@ and the tab appears only while you are on one, so there is a way back.
 
 **History** is the full list of days, plus the backup buttons.
 
-**Baseline** is the setup screen: your normal value for each item, the hours of
-sleep you normally need, what is tracked at all, and what the rewards pay.
+**Settings** is a short menu — Baselines, What to track, Sleep, Rewards — each
+on its own page. Baselines used to sit at the top of this screen as twenty-odd
+rating rows, which made everything else read like a footnote you had to scroll
+past. Each row shows its current state, so the menu answers most questions
+without opening anything.
 
 ## Putting it on the phone
 
@@ -155,7 +158,7 @@ rather than copied, so the two cannot drift apart.
 
 ## What is tracked is a setting
 
-The Baseline screen has a **What to track** section. Every item can be hidden,
+Settings → **What to track**. Every item can be hidden,
 and you can add your own.
 
 - **Hiding** stops an item being asked for and stops it counting toward the
@@ -183,8 +186,8 @@ the setup changes, so there is a single place that decides what exists.
 
 Two things pay, and both are things worth reinforcing rather than things that
 happen to you. The amounts start at €0.20 a thing done well, €0.25 for a day
-paced at 1 and €0.50 for a day paced at 0, and all three are editable in the
-Rewards section of the Baseline screen — as is whether there is any money at
+paced at 1 and €0.50 for a day paced at 0, and all three are editable in
+Settings → Rewards — as is whether there is any money at
 all.
 
 The pot is **worked out from the log rather than banked**, so changing an
@@ -337,8 +340,8 @@ them sleep carries two of the seven slots on a night you log both — that is
 deliberate. Leaving hours blank costs nothing: the day is then scored over the
 six items it does have.
 
-The reference is **hours you normally need**, set at the bottom of the Baseline
-screen and starting at 8. Only sleeping short of it counts:
+The reference is **hours you normally need**, set in Settings → Sleep and
+starting at 8. Only sleeping short of it counts:
 
 ```
 burden = (target − hours) / target, clamped to 0..1

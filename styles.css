@@ -630,3 +630,35 @@ input:focus, textarea:focus, button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* Settings menu */
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  text-align: left;
+}
+.menu-main { flex: 1; min-width: 0; }
+.menu-title { font-size: 16px; margin-bottom: 2px; }
+.menu-blurb { font-size: 13px; color: var(--dim); }
+.menu-side { display: flex; align-items: center; gap: 8px; flex: none; }
+.menu-value { font-size: 13px; color: var(--dim); }
+.menu-arrow { font-size: 18px; color: var(--dim); }
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 14px;
+  min-height: 46px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
