@@ -442,6 +442,11 @@ makes it usable: a rating for how much it took, and a line saying what it was.
   green better, grey at it, then the same yellow-orange-red heat for one, two,
   three or more steps worse. Every cell prints its number, so the colour never
   carries the value on its own.
+- A score's colour follows its value across seven steps rather than three
+  buckets. Both numbers are fed the same way — as "how good is this", which for
+  the PEM predictor means 100 minus the score — so a green 91 and a green 28
+  mean the same thing even though the numbers point opposite ways. Every step
+  is contrast-checked against the page background; the weakest is 5.17:1.
 - The chart's two lines were checked for colourblind separation rather than
   guessed: worst pair ΔE 17.6 under protanopia against a floor of 8. They sit
   slightly outside the standard categorical lightness and chroma bands on

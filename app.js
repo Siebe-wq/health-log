@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.18.0";
+var VERSION = "v1.19.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -49,6 +49,31 @@ var VAL = {
    hue muted enough for this screen collapses into one of these (a purple I
    tried sat ΔE 0.5 from the blue under deuteranopia — indistinguishable). */
 var SERIES_DETAIL = { week: "#C4714C", pem: "#8FB6E0" };
+
+/* A score's colour follows its value rather than sitting in one of three
+   buckets: seven steps from green through neutral into the heat, each one
+   checked against the page background rather than chosen by eye (the weakest
+   is 5.17:1, the strongest 8.82:1).
+
+   Both numbers are fed the same way — as "how good is this", which for the PEM
+   predictor means 100 minus the score — so a green 80 and a green 20 mean the
+   same thing even though the numbers point opposite ways. */
+var SCORE_HUES = [
+  { at: 90, hue: "#7FBF97" },
+  { at: 80, hue: "#6FAF87" },
+  { at: 70, hue: "#8FB49B" },
+  { at: 60, hue: "#A9B3BD" },
+  { at: 45, hue: "#C9A45C" },
+  { at: 30, hue: "#D08A6B" },
+  { at: 0,  hue: "#C4704F" }
+];
+
+function scoreHue(goodness) {
+  for (var i = 0; i < SCORE_HUES.length; i++) {
+    if (goodness >= SCORE_HUES[i].at) return SCORE_HUES[i].hue;
+  }
+  return SCORE_HUES[SCORE_HUES.length - 1].hue;
+}
 
 var SLOTS = [
   { colour: "#C4714C", dash: "" },
@@ -1188,10 +1213,11 @@ function detailScreen() {
   var band;
   if (value === null) band = ["#77828E", "not enough logged days yet"];
   else if (kind === "pem") {
-    band = value <= 20 ? ["#6FAF87", "low"] : value <= 40 ? ["#C6CED6", "raised"] : ["#D08A6B", "high"];
+    band = [scoreHue(100 - value),
+      value <= 20 ? "low" : value <= 40 ? "raised" : "high"];
   } else {
-    band = value >= 85 ? ["#6FAF87", "at or near your normal"]
-      : value >= 70 ? ["#C6CED6", "somewhat below your normal"] : ["#D08A6B", "well below your normal"];
+    band = [scoreHue(value), value >= 85 ? "at or near your normal"
+      : value >= 70 ? "somewhat below your normal" : "well below your normal"];
   }
 
   var head = el("div", { class: "score-head" }, [
@@ -1323,12 +1349,12 @@ function scoreTile() {
       text: now.days === 0 ? "Needs a few logged days" : "Needs 3 logged days, has " + now.days }));
     return box;
   }
-  var band = now.score >= 85 ? ["#6FAF87", "at or near your normal"]
-    : now.score >= 70 ? ["#C6CED6", "somewhat below your normal"]
-    : ["#D08A6B", "well below your normal"];
+  var band = [scoreHue(now.score), now.score >= 85 ? "at or near your normal"
+    : now.score >= 70 ? "somewhat below your normal" : "well below your normal"];
   var head = el("div", { class: "score-head" }, [
     el("span", { class: "score-num", text: String(now.score) }),
-    el("span", { class: "score-band", text: band[1] })
+    el("span", { class: "score-band", text: band[1] }),
+    el("span", { class: "score-arrow", text: "\u203a" })
   ]);
   head.querySelector(".score-num").style.color = band[0];
   box.appendChild(el("div", { class: "score-label", text: "Week score" }));
@@ -1342,7 +1368,6 @@ function scoreTile() {
       " the week before · " + line;
   }
   box.appendChild(el("div", { class: "score-cap", text: line }));
-  box.appendChild(el("span", { class: "tap-hint", text: "what is behind this" }));
   return box;
 }
 
@@ -1358,12 +1383,12 @@ function pemTile() {
       text: "Needs 2 of the last 4 days, has " + now.days }));
     return box;
   }
-  var band = now.risk <= 20 ? ["#6FAF87", "low"]
-    : now.risk <= 40 ? ["#C6CED6", "raised"]
-    : ["#D08A6B", "high"];
+  var band = [scoreHue(100 - now.risk),
+    now.risk <= 20 ? "low" : now.risk <= 40 ? "raised" : "high"];
   var head = el("div", { class: "score-head" }, [
     el("span", { class: "score-num", text: String(now.risk) }),
-    el("span", { class: "score-band", text: band[1] })
+    el("span", { class: "score-band", text: band[1] }),
+    el("span", { class: "score-arrow", text: "\u203a" })
   ]);
   head.querySelector(".score-num").style.color = band[0];
   box.appendChild(head);
@@ -1379,7 +1404,6 @@ function pemTile() {
   }
   box.appendChild(el("div", { class: "score-cap",
     text: reading + " · demand, pacing and sleep over 4 days, a rule of thumb" }));
-  box.appendChild(el("span", { class: "tap-hint", text: "what is behind this" }));
   return box;
 }
 
