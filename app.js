@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.16.0";
+var VERSION = "v1.17.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -103,11 +103,17 @@ var BAND_SCALE = {
   Symptoms: SCALE_SEVERITY,
   Exertion: SCALE_DEMAND
 };
+/* Laid out in the same columns as the buttons below it, so each word sits over
+   the number it names. The four button rows are the majority; Mood and the
+   no/yes pairs carry their own words anyway. */
 function bandLegend(band) {
   var words = BAND_SCALE[band];
   if (!words) return null;
-  return el("div", { class: "band-legend",
-    text: words.map(function (w, i) { return i + " " + w; }).join("  ·  ") });
+  var row = el("div", { class: "scale band-legend" });
+  words.forEach(function (w, i) {
+    row.appendChild(el("span", { text: i + " " + w }));
+  });
+  return row;
 }
 var SCALE_SLEEP = ["awful", "poor", "ok", "good"];
 var SCALE_PACING = ["paced well", "slipped", "pushed", "pushed hard"];

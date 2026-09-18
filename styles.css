@@ -618,15 +618,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--dim);
 }
 
-/* What a band's numbers mean, said once. */
-.band-legend {
-  font-size: 12px;
-  color: var(--dim);
-  margin: -6px 0 14px;
-}
+/* What a band's numbers mean, said once, over the columns it names. */
+.band-legend { margin: -4px 0 16px; }
 
 /* One line of detail against the exertion row it belongs to. */
-.detail-field { margin-top: 6px; font-size: 14px; }
+.detail-field { margin-top: 6px; margin-bottom: 20px; font-size: 14px; }
 
 /* The browser's default focus ring is white, which is exactly the glare this
    palette exists to avoid. */

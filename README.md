@@ -375,12 +375,16 @@ without a signal.
 Said once where a scale can be inferred, and per row only where it cannot.
 
 **Under the band header**, read once for the sixteen symptom rows and once for
-the exertion rows:
+the exertion rows, laid out in the same columns as the buttons so each word
+sits over the number it names:
 
 ```
 Symptoms   0 none · 1 mild · 2 moderate · 3 severe
 Exertion   0 none · 1 a little · 2 a fair bit · 3 a lot
 ```
+
+The four button rows are the majority, so the columns line up with them. Mood
+and the no/yes pairs carry their own words on the buttons anyway.
 
 **Under the buttons**, for the three scales that cannot be read off their
 neighbours:
