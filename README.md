@@ -370,6 +370,34 @@ tiny server ever became acceptable it is buildable. Until then the phone's own
 alarm or a repeating calendar entry does the job, needs no code, and fires
 without a signal.
 
+## What the numbers mean
+
+Every rated row carries its anchors under the buttons, one word per button, so
+the scale is never something to remember. Four sets cover everything:
+
+```
+severity   none · mild · moderate · severe
+demand     none · a little · a fair bit · a lot
+sleep      awful · poor · ok · good
+pacing     paced well · slipped · pushed · pushed hard
+episode    none · slight · mild · clear · strong · severe   (0-5)
+```
+
+Rows whose buttons already carry words — the no/yes pairs and Mood — get
+nothing extra.
+
+**Two scales genuinely invert**, which is why this was worth doing rather than
+trusting the numbers:
+
+- **Sleep quality**: 3 is a good night, the opposite of every symptom.
+- **Pacing**: a high number means you paced *badly*. It used to say so in the
+  label, "(low = better)", which is a parenthetical doing work the scale should
+  do. The label is now just Pacing and the anchors carry it. It still exports
+  as `Pacing (low = better)`, the name the history uses.
+
+Your own items inherit the anchors of the band they sit in: severity in
+Symptoms and Night, demand in Exertion.
+
 ## Design rules, on purpose
 
 - Dark, low-glare. No white anywhere, no bright surfaces.

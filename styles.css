@@ -602,3 +602,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--dim);
   font-size: 13px;
 }
+
+/* What the numbers on a rating row mean. */
+.scale {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.scale span {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--dim);
+}

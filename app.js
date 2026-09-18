@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.14.0";
+var VERSION = "v1.15.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -84,51 +84,68 @@ function valenceFill(delta) {
   return VAL.bad3;
 }
 
+/* ---------- what the numbers mean ---------- */
+
+/* A bare 0-3 tells you nothing at three in the morning, and two of these
+   scales run the opposite way to the rest. Every rated row carries its anchors
+   under the buttons.
+
+   Sleep quality and pacing are the two that genuinely invert: on both, a high
+   number is the bad end everywhere else, and here it is the good one for sleep
+   and the bad one for pacing despite both being about doing well. */
+var SCALE_SEVERITY = ["none", "mild", "moderate", "severe"];
+var SCALE_DEMAND = ["none", "a little", "a fair bit", "a lot"];
+var SCALE_SLEEP = ["awful", "poor", "ok", "good"];
+var SCALE_PACING = ["paced well", "slipped", "pushed", "pushed hard"];
+var SCALE_EPISODE = ["none", "slight", "mild", "clear", "strong", "severe"];
+
 /* ---------- items ---------- */
 
 var BUILTIN_SECTIONS = [
   { title: "Energy", band: "Symptoms", items: [
-    { key: "tired", label: "Feeling tired / sluggish" },
-    { key: "pem", label: "PEM" },
+    { key: "tired", label: "Feeling tired / sluggish", scale: SCALE_SEVERITY },
+    { key: "pem", label: "PEM", scale: SCALE_SEVERITY },
     { key: "crash", label: "Crash", max: 1, labels: ["no", "yes"] }
   ]},
   { title: "Brain", items: [
     { key: "mood", label: "Mood", max: 4, ramp: MOOD_RAMP,
       labels: ["happy", "good", "neutral", "meh", "bad"] },
-    { key: "brainFog", label: "Brain fog" },
-    { key: "headache", label: "Headache" },
-    { key: "noise", label: "Noise sensitivity" }
+    { key: "brainFog", label: "Brain fog", scale: SCALE_SEVERITY },
+    { key: "headache", label: "Headache", scale: SCALE_SEVERITY },
+    { key: "noise", label: "Noise sensitivity", scale: SCALE_SEVERITY }
   ]},
   { title: "Body", items: [
-    { key: "muscleAches", label: "Muscle burn" },
-    { key: "muscleWeakness", label: "Muscle weakness" },
-    { key: "breath", label: "Shortness of breath" },
-    { key: "soreThroat", label: "Sore throat" },
-    { key: "sweating", label: "Sweating / thermal dysregulation" },
-    { key: "hyper", label: "Hyper / sympathetic overdrive" },
-    { key: "mcas", label: "MCAS" }
+    { key: "muscleAches", label: "Muscle burn", scale: SCALE_SEVERITY },
+    { key: "muscleWeakness", label: "Muscle weakness", scale: SCALE_SEVERITY },
+    { key: "breath", label: "Shortness of breath", scale: SCALE_SEVERITY },
+    { key: "soreThroat", label: "Sore throat", scale: SCALE_SEVERITY },
+    { key: "sweating", label: "Sweating / thermal dysregulation", scale: SCALE_SEVERITY },
+    { key: "hyper", label: "Hyper / sympathetic overdrive", scale: SCALE_SEVERITY },
+    { key: "mcas", label: "MCAS", scale: SCALE_SEVERITY }
   ]},
   { title: "Gut", items: [
-    { key: "constipation", label: "Constipation" },
-    { key: "diarrhea", label: "Diarrhea" },
-    { key: "indigestion", label: "Post-dinner indigestion" }
+    { key: "constipation", label: "Constipation", scale: SCALE_SEVERITY },
+    { key: "diarrhea", label: "Diarrhea", scale: SCALE_SEVERITY },
+    { key: "indigestion", label: "Post-dinner indigestion", scale: SCALE_SEVERITY }
   ]},
   { title: "Anything else", items: [
-    { key: "other", label: "Other" }
+    { key: "other", label: "Other", scale: SCALE_SEVERITY }
   ]},
   { title: "What the day asked of you", band: "Exertion", items: [
-    { key: "physical", label: "Physically active" },
-    { key: "orthostatic", label: "Orthostatic exertion" },
-    { key: "mental", label: "Mentally demanding" },
-    { key: "social", label: "Socially demanding" },
-    { key: "emotional", label: "Emotionally stressful" },
-    { key: "pacing", label: "Pacing (low = better)", ramp: PACING_RAMP }
+    { key: "physical", label: "Physically active", scale: SCALE_DEMAND },
+    { key: "orthostatic", label: "Orthostatic exertion", scale: SCALE_DEMAND },
+    { key: "mental", label: "Mentally demanding", scale: SCALE_DEMAND },
+    { key: "social", label: "Socially demanding", scale: SCALE_DEMAND },
+    { key: "emotional", label: "Emotionally stressful", scale: SCALE_DEMAND },
+    { key: "pacing", label: "Pacing", ramp: PACING_RAMP, scale: SCALE_PACING }
   ]}
 ];
 
 var BUILTIN_MORNING = [
-  { key: "sleep", label: "Sleep quality", ramp: SLEEP_RAMP, higherIsBetter: true },
-  { key: "episode", label: "Dysautonomic episode", max: 5, ramp: RAMP6 },
+  { key: "sleep", label: "Sleep quality", ramp: SLEEP_RAMP, higherIsBetter: true,
+    scale: SCALE_SLEEP },
+  { key: "episode", label: "Dysautonomic episode", max: 5, ramp: RAMP6,
+    scale: SCALE_EPISODE },
   { key: "syncope", label: "Near-syncope", max: 1, labels: ["no", "yes"] }
 ];
 
@@ -151,6 +168,7 @@ function customItems(band) {
       var item = { key: c.key, label: c.label, custom: true };
       if (c.max !== undefined) item.max = c.max;
       if (c.max === 1) item.labels = ["no", "yes"];
+      else if (c.max === 3) item.scale = band === "exertion" ? SCALE_DEMAND : SCALE_SEVERITY;
       return item;
     });
 }
@@ -519,7 +537,18 @@ function ratingRow(item, getValue, setValue, baselineOf, onAfter) {
     }
   }
   refresh();
-  return { el: el("div", { class: "row" }, [label, opts]), refresh: refresh };
+  /* Anchors go under the buttons, one per button, so the words line up with
+     the numbers they belong to. Rows whose buttons already carry words — the
+     no/yes pairs and mood — need nothing. */
+  var kids = [label, opts];
+  if (item.scale && !item.labels) {
+    var anchors = el("div", { class: "scale" });
+    for (var k = 0; k <= max; k++) {
+      anchors.appendChild(el("span", { text: item.scale[k] === undefined ? "" : item.scale[k] }));
+    }
+    kids.push(anchors);
+  }
+  return { el: el("div", { class: "row" }, kids), refresh: refresh };
 }
 
 /* Stepper buttons so a value needs no keyboard in the dark; the field still
