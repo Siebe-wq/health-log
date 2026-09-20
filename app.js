@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.20.0";
+var VERSION = "v1.21.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -1438,8 +1438,13 @@ function sparkRows(picked, dates, data) {
     for (var i = vals.length - 1; i >= 0; i--) { if (vals[i] !== null) { last = i; break; } }
     var shown = "\u2013";
     if (last !== null) {
-      var e = settledEntry(dates[last]);
-      var raw = e && def.raw ? def.raw(e) : null;
+      var raw;
+      if (def.rawByDate) {
+        raw = def.rawByDate(dates[last]);
+      } else {
+        var e = settledEntry(dates[last]);
+        raw = e && def.raw ? def.raw(e) : null;
+      }
       shown = raw === null || raw === undefined ? String(vals[last]) : String(raw);
     }
     var row = el("button", { class: "spark-row", type: "button",
@@ -1481,6 +1486,20 @@ function seriesDefs() {
     { key: "exertion", label: "Exertion",
       value: function (e) { var b = loadBurden(e); return b === null ? null : Math.round(100 * b); } }
   ];
+  /* These two are functions of a date rather than of one day's record, so they
+     carry their own reader. Both are drawn up-is-worse like everything else,
+     which for the week score means plotting 100 minus it — the figure on the
+     right is still the score itself. */
+  defs.push({
+    key: "score:week", label: "Week score",
+    byDate: function (d) { var r = weekScore(d); return r.score === null ? null : 100 - r.score; },
+    rawByDate: function (d) { return weekScore(d).score; }
+  });
+  defs.push({
+    key: "score:pem", label: "PEM risk",
+    byDate: function (d) { return pemRisk(d).risk; },
+    rawByDate: function (d) { return pemRisk(d).risk; }
+  });
   defs.push({
     key: "i:sleepHours", label: "Sleep hours",
     value: function (e) {
@@ -1537,6 +1556,7 @@ function chart() {
 
     var data = picked.map(function (def) {
       return dates.map(function (d) {
+        if (def.byDate) return def.byDate(d);
         var e = settledEntry(d);
         return e ? def.value(e) : null;
       });
@@ -1549,7 +1569,7 @@ function chart() {
         host.appendChild(sparkRows(picked, dates, data));
       }
       host.appendChild(el("div", { class: "chart-foot" }, [
-        el("span", { class: "item", text: "0-100, up is worse · 14 days" }),
+        el("span", { class: "item", text: "up is worse · the figure is the day's own value" }),
         el("button", { class: "lines", type: "button",
           text: (pickerOpen ? "done" : "choose variables") + " \u203a",
           onclick: function () { pickerOpen = !pickerOpen; paint(); } })
@@ -1647,7 +1667,7 @@ function chart() {
       item.insertBefore(sw, item.firstChild);
       legend.appendChild(item);
     });
-    legend.appendChild(el("span", { class: "note", text: "0-100, up is worse" }));
+    legend.appendChild(el("span", { class: "note", text: "up is worse" }));
     host.appendChild(legend);
 
     var readout = el("div", { class: "readout" });
@@ -1665,7 +1685,8 @@ function chart() {
         el("span", { text: pretty(d) })
       ]);
       picked.forEach(function (def, si) {
-        var shown = e && def.raw ? def.raw(e) : data[si][chartPick];
+        var shown = def.rawByDate ? def.rawByDate(d)
+          : e && def.raw ? def.raw(e) : data[si][chartPick];
         var span = el("span", { class: "key",
           text: def.label + " " + (shown === null || shown === undefined ? "–" : shown) });
         span.style.color = SLOTS[si].colour;
@@ -1724,8 +1745,16 @@ function chart() {
 
 /* One row: seven days of pacing, coloured by how it sits against your normal.
    Pacing is the thing you can actually steer, so it is the thing kept in view. */
-function pacingRow() {
+/* Today only joins the row once its evening is in, the same rule the scores
+   use. Until then the week ends yesterday, so all seven cells carry a day
+   rather than one of them always being a dash. */
+function pacingEnd() {
   var t = today();
+  return settledEntry(t) ? t : shiftDay(t, -1);
+}
+
+function pacingRow() {
+  var t = pacingEnd();
   var grid = el("div", { class: "grid" });
   grid.appendChild(el("div", {}));
   var dates = [];
@@ -1733,7 +1762,7 @@ function pacingRow() {
 
   dates.forEach(function (d) {
     var p = d.split("-").map(Number);
-    grid.appendChild(el("div", { class: "grid-day" + (d === t ? " now" : ""),
+    grid.appendChild(el("div", { class: "grid-day" + (d === today() ? " now" : ""),
       text: DAY_NAMES[new Date(p[0], p[1] - 1, p[2]).getDay()].charAt(0) }));
   });
 
@@ -1914,7 +1943,7 @@ function homeScreen() {
 /* The streak is the point of keeping pacing in view: it is the one row that
    rewards a run of good days rather than only reporting them. */
 function pacingStreak() {
-  var t = today(), paced = 0, logged = 0, pay = 0;
+  var t = pacingEnd(), paced = 0, logged = 0, pay = 0;
   for (var i = 0; i < 7; i++) {
     var e = settledEntry(shiftDay(t, -i));
     if (!e || !itemCounts(e, "pacing") || e.v.pacing === undefined) continue;
