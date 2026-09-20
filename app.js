@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.21.0";
+var VERSION = "v1.22.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -1379,6 +1379,36 @@ function scorePair() {
   ]);
 }
 
+/* The figure beside each row: the average over the last seven days, written
+   against the scale it sits on. A bare number said nothing — "Brain fog 2"
+   could have been today's value, the week's, or something scaled. "1.4/3" says
+   which of the three it is and how far up the scale that sits. */
+function seriesSummary(def, dates, vals) {
+  /* The week ends at the last day that has anything in it, the same anchor the
+     pacing row uses. Anchoring on today instead would quietly average six days
+     rather than seven for most of every day. */
+  var end = dates.length - 1;
+  while (end > 0 && (vals[end] === null || vals[end] === undefined)) end--;
+  var sum = 0, n = 0;
+  for (var i = end; i >= 0 && i > end - 7; i--) {
+    var v;
+    if (def.numByDate) v = def.numByDate(dates[i]);
+    else {
+      var e = settledEntry(dates[i]);
+      v = e ? (def.num ? def.num(e) : def.value(e)) : null;
+    }
+    if (v === null || v === undefined || isNaN(Number(v))) continue;
+    sum += Number(v); n++;
+  }
+  if (!n) return "\u2013";
+  var max = typeof def.scaleMax === "function" ? def.scaleMax() : def.scaleMax;
+  var dp = def.dp === undefined ? 1 : def.dp;
+  var mean = sum / n;
+  /* A whole number does not need a decimal point pretending to precision. */
+  var text = dp && Math.abs(mean - Math.round(mean)) > 0.04 ? mean.toFixed(dp) : String(Math.round(mean));
+  return text + "/" + max + (def.unit || "");
+}
+
 /* One row per variable: a name, its own small chart, and today's figure.
 
    This is the answer to the three line cap. Overlaid lines have to be told
@@ -1436,17 +1466,7 @@ function sparkRows(picked, dates, data) {
 
     var last = null;
     for (var i = vals.length - 1; i >= 0; i--) { if (vals[i] !== null) { last = i; break; } }
-    var shown = "\u2013";
-    if (last !== null) {
-      var raw;
-      if (def.rawByDate) {
-        raw = def.rawByDate(dates[last]);
-      } else {
-        var e = settledEntry(dates[last]);
-        raw = e && def.raw ? def.raw(e) : null;
-      }
-      shown = raw === null || raw === undefined ? String(vals[last]) : String(raw);
-    }
+    var shown = seriesSummary(def, dates, vals);
     var row = el("button", { class: "spark-row", type: "button",
       "aria-label": def.label + ", last 14 days",
       onclick: function () { if (last !== null) openEvening(dates[last]); } }, [
@@ -1481,9 +1501,9 @@ function shortLabel(label) {
 
 function seriesDefs() {
   var defs = [
-    { key: "symptoms", label: "Symptoms",
+    { key: "symptoms", label: "Symptoms", scaleMax: 100, dp: 0,
       value: function (e) { var b = dayBurden(e); return b === null ? null : Math.round(100 * b); } },
-    { key: "exertion", label: "Exertion",
+    { key: "exertion", label: "Exertion", scaleMax: 100, dp: 0,
       value: function (e) { var b = loadBurden(e); return b === null ? null : Math.round(100 * b); } }
   ];
   /* These two are functions of a date rather than of one day's record, so they
@@ -1491,31 +1511,33 @@ function seriesDefs() {
      which for the week score means plotting 100 minus it — the figure on the
      right is still the score itself. */
   defs.push({
-    key: "score:week", label: "Week score",
+    key: "score:week", label: "Week score", scaleMax: 100, dp: 0,
     byDate: function (d) { var r = weekScore(d); return r.score === null ? null : 100 - r.score; },
-    rawByDate: function (d) { return weekScore(d).score; }
+    numByDate: function (d) { return weekScore(d).score; }
   });
   defs.push({
-    key: "score:pem", label: "PEM risk",
+    key: "score:pem", label: "PEM risk", scaleMax: 100, dp: 0,
     byDate: function (d) { return pemRisk(d).risk; },
-    rawByDate: function (d) { return pemRisk(d).risk; }
+    numByDate: function (d) { return pemRisk(d).risk; }
   });
   defs.push({
-    key: "i:sleepHours", label: "Sleep hours",
+    key: "i:sleepHours", label: "Sleep hours", dp: 1, unit: "h",
+    scaleMax: function () { return state.baselines.hoursTarget || DEFAULT_BASELINES.hoursTarget; },
     value: function (e) {
       var b = nightIsLogged(e) ? hoursBurden(e) : null;
       return b === null ? null : Math.round(100 * b);
     },
-    raw: function (e) {
+    num: function (e) {
       if (!nightIsLogged(e)) return null;
       var h = e.sleepHours;
-      return h === "" || h === undefined || h === null ? null : h + "h";
+      return h === "" || h === undefined || h === null ? null : Number(h);
     }
   });
   ALL_ITEMS.forEach(function (it) {
     var max = it.max === undefined ? 3 : it.max;
     defs.push({
       key: "i:" + it.key, label: shortLabel(it.label), item: it,
+      scaleMax: max, dp: 1,
       value: function (e) {
         if (!itemCounts(e, it.key)) return null;
         var v = e.v[it.key];
@@ -1523,7 +1545,7 @@ function seriesDefs() {
         /* share of the item's own scale, in the direction that is worse */
         return Math.round(100 * (it.higherIsBetter ? (max - v) / max : v / max));
       },
-      raw: function (e) {
+      num: function (e) {
         if (!itemCounts(e, it.key)) return null;
         return e.v[it.key] === undefined ? null : e.v[it.key];
       }
@@ -1569,7 +1591,7 @@ function chart() {
         host.appendChild(sparkRows(picked, dates, data));
       }
       host.appendChild(el("div", { class: "chart-foot" }, [
-        el("span", { class: "item", text: "up is worse · the figure is the day's own value" }),
+        el("span", { class: "item", text: "up is worse · figures are the 7 day average" }),
         el("button", { class: "lines", type: "button",
           text: (pickerOpen ? "done" : "choose variables") + " \u203a",
           onclick: function () { pickerOpen = !pickerOpen; paint(); } })
@@ -1685,8 +1707,8 @@ function chart() {
         el("span", { text: pretty(d) })
       ]);
       picked.forEach(function (def, si) {
-        var shown = def.rawByDate ? def.rawByDate(d)
-          : e && def.raw ? def.raw(e) : data[si][chartPick];
+        var shown = def.numByDate ? def.numByDate(d)
+          : e && def.num ? def.num(e) : data[si][chartPick];
         var span = el("span", { class: "key",
           text: def.label + " " + (shown === null || shown === undefined ? "–" : shown) });
         span.style.color = SLOTS[si].colour;

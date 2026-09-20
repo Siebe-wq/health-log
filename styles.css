@@ -717,9 +717,18 @@ input:focus, textarea:focus, button:focus-visible {
   color: var(--text);
   text-align: left;
 }
-.spark-name { flex: none; width: 96px; font-size: 13px; color: var(--dim); }
+.spark-name {
+  flex: none;
+  width: 90px;
+  font-size: 13px;
+  color: var(--dim);
+  /* A long name should shorten rather than wrap and make its row taller. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .spark-svg { flex: 1; min-width: 0; height: 30px; }
-.spark-now { flex: none; width: 40px; text-align: right; font-size: 14px; }
+.spark-now { flex: none; width: 58px; text-align: right; font-size: 13px; }
 .streak { font-size: 12px; color: #6FAF87; margin-top: 6px; }
 .chart-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
 .chart-foot .item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
