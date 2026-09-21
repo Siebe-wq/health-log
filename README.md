@@ -215,9 +215,15 @@ backup cannot wipe spending recorded since.
 same tab. It lands in that day's record like any other win, so it exports with
 everything else.
 
-**Did something well** on Home logs one with a single tap. The text is optional
-and comes after the tap, never before it, so a bad day still gets the tap.
-Nothing blocks, and the last one can be removed if it was a mis-tap.
+**Did something well** is a plus and a line to write on, one row. Type what it
+was and press the plus, or the return key, and it is logged. A plus pressed on
+an empty line still logs one without any typing, so the cheap path survives for
+a bad day. Nothing blocks, and the last one can be removed if it was a mis-tap.
+
+The order is words first, plus second. It used to log on the tap and offer the
+words afterwards, which meant the row changed shape as soon as it was used —
+and a field that appears only after an action is a field that looks broken when
+it does not.
 
 A day only pays for pacing you actually stood behind — the same rule the scores
 use. Every record starts pre-filled at baseline, and pacing's baseline is 1, so

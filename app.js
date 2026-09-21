@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.22.0";
+var VERSION = "v1.23.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -1892,41 +1892,46 @@ function homeScreen() {
   due.forEach(function (c) { wrap.appendChild(c); });
   later.forEach(function (c) { wrap.appendChild(c); });
 
-  /* Something done well. One tap logs it; the description is optional and
-     comes after, so a bad day still gets the tap. The box repaints itself
-     rather than leaning on a full re-render, so the field is there the moment
-     the first one is logged. */
+  /* Something done well: a plus and a line to write on, one row.
+
+     The order flips from what it was. It used to log on the tap and offer the
+     words afterwards; now the words come first and the plus commits them. The
+     cheap path survives — a plus tapped on an empty line still logs one
+     without any typing — and the row keeps its shape either way, which the
+     old appearing-and-disappearing field did not. */
   var winBox = el("div", { class: "win-box" });
   function paintWins() {
     winBox.innerHTML = "";
-    winBox.appendChild(el("button", { class: "btn wide win-btn", type: "button",
-      text: "Did something well",
-      onclick: function () {
-        logWin(t);
-        paintWins();
-        var field = winBox.querySelector(".win-input");
-        if (field) field.focus();
-        flash(state.pay.on ? "Logged · " + euro(payWin()) : "Logged");
-      }}));
+    var field = el("input", { type: "text", class: "win-field",
+      placeholder: "Did something well\u2026" });
+
+    function commit() {
+      logWin(t, field.value.trim());
+      paintWins();
+      winBox.querySelector(".win-field").focus();
+      flash(state.pay.on ? "Logged \u00b7 " + euro(payWin()) : "Logged");
+    }
+    field.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+    });
+
+    winBox.appendChild(el("div", { class: "win-row" }, [
+      el("button", { class: "win-add", type: "button", text: "+",
+        "aria-label": "Log something done well", onclick: commit }),
+      field
+    ]));
 
     var wins = (state.days[t] && state.days[t].wins) || [];
     if (!wins.length) return;
     var last = wins.length - 1;
-    winBox.appendChild(el("div", { class: "field-label", text: "What was it? (optional)" }));
-    var note = el("input", { type: "text", class: "win-input", placeholder: "Say it in a few words" });
-    note.value = wins[last].text || "";
-    note.addEventListener("input", function () {
-      update(t, function (e) { e.wins[last].text = note.value; });
-      saveSoon();
-    });
-    winBox.appendChild(note);
-    var line = el("div", { class: "win-added" }, [
-      el("span", { text: wins.length + (wins.length === 1 ? " thing" : " things") + " today"
-        + (state.pay.on ? " · " + euro(wins.length * payWin()) : "") }),
+    var said = wins[last].text ? " \u00b7 \u201c" + wins[last].text + "\u201d" : "";
+    winBox.appendChild(el("div", { class: "win-added" }, [
+      el("span", { class: "win-count",
+        text: wins.length + (wins.length === 1 ? " thing" : " things") + " today"
+          + (state.pay.on ? " \u00b7 " + euro(wins.length * payWin()) : "") + said }),
       el("button", { class: "win-undo", type: "button", text: "remove last",
         onclick: function () { removeWin(t, last); paintWins(); } })
-    ]);
-    winBox.appendChild(line);
+    ]));
   }
   paintWins();
   wrap.appendChild(winBox);

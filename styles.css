@@ -465,24 +465,42 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Something done well */
 .win-box { margin-bottom: 20px; }
-.win-btn {
+/* A plus and a line to write on, side by side. */
+.win-row { display: flex; gap: 8px; align-items: stretch; }
+.win-add {
+  flex: none;
+  width: 56px;
   min-height: 50px;
+  border-radius: 8px;
   background: var(--surface-up);
   border: 1px solid var(--line);
-  color: var(--text);
-  font-size: 16px;
+  color: var(--accent);
+  font-size: 26px;
+  line-height: 1;
+  padding: 0;
 }
-.win-input { margin-top: 8px; }
+.win-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 50px;
+}
 .win-added {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   font-size: 13px;
   color: var(--dim);
   margin-top: 8px;
 }
+.win-count {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .win-undo {
+  flex: none;
   background: none;
   border: none;
   color: var(--dim);
