@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.23.0";
+var VERSION = "v1.24.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -210,11 +210,31 @@ function customItems(band) {
   return (state.custom || []).filter(function (c) { return c.band === band; })
     .map(function (c) {
       var item = { key: c.key, label: c.label, custom: true };
+      if (c.section) item.section = c.section;
       if (c.max !== undefined) item.max = c.max;
       if (c.max === 1) item.labels = ["no", "yes"];
       else if (c.max === 3) item.scale = band === "exertion" ? SCALE_DEMAND : SCALE_SEVERITY;
       return item;
     });
+}
+
+/* The sections a custom symptom can be filed under. Everything before the
+   Exertion band belongs to Symptoms. */
+function symptomSectionTitles() {
+  var out = [];
+  for (var i = 0; i < BUILTIN_SECTIONS.length; i++) {
+    if (BUILTIN_SECTIONS[i].band === "Exertion") break;
+    out.push(BUILTIN_SECTIONS[i].title);
+  }
+  return out;
+}
+
+/* What the settings list prints beside a custom item's name. */
+function customWhere(c) {
+  if (c.band === "symptoms" && c.section && symptomSectionTitles().indexOf(c.section) >= 0) {
+    return c.section;
+  }
+  return bandName(c.band);
 }
 
 function isHidden(key) {
@@ -223,23 +243,34 @@ function isHidden(key) {
 
 function rebuildItems() {
   var visible = function (i) { return !isHidden(i.key); };
+  var mine = customItems("symptoms").filter(visible);
+  var titles = symptomSectionTitles();
+  var placed = {};
 
   EVENING_SECTIONS = BUILTIN_SECTIONS.map(function (sec) {
     var items = sec.items.filter(visible);
-    if (sec.title === "What the day asked of you") {
+    if (sec.band === "Exertion") {
       items = items.concat(customItems("exertion").filter(visible));
+    } else if (titles.indexOf(sec.title) >= 0) {
+      /* A custom symptom filed under this section joins the end of it. The
+         concat happens before the empty-section filter, so a section whose
+         built-in items are all hidden still appears for its custom ones. */
+      mine.forEach(function (it) {
+        if (it.section === sec.title) { items = items.concat([it]); placed[it.key] = true; }
+      });
     }
     return { title: sec.title, band: sec.band, items: items };
   }).filter(function (sec) { return sec.items.length > 0; });
 
-  var mine = customItems("symptoms").filter(visible);
-  if (mine.length) {
-    /* Your own symptoms sit at the end of the Symptoms band, before Exertion. */
+  /* Anything with no section chosen, or a section that no longer exists,
+     sits at the end of the Symptoms band, before Exertion. */
+  var loose = mine.filter(function (it) { return !placed[it.key]; });
+  if (loose.length) {
     var at = EVENING_SECTIONS.length;
     for (var i = 0; i < EVENING_SECTIONS.length; i++) {
       if (EVENING_SECTIONS[i].band === "Exertion") { at = i; break; }
     }
-    EVENING_SECTIONS.splice(at, 0, { title: "Your own", items: mine });
+    EVENING_SECTIONS.splice(at, 0, { title: "Your own", items: loose });
   }
   /* A band header belongs to whichever section now opens that band. */
   var seen = {};
@@ -2371,12 +2402,12 @@ function settingsTrack(wrap) {
   if ((state.custom || []).length) {
     wrap.appendChild(el("div", { class: "section-head", text: "Your own" }));
     state.custom.forEach(function (c) {
-      wrap.appendChild(trackRow(c.key, c.label + " · " + bandName(c.band), true));
+      wrap.appendChild(trackRow(c.key, c.label + " · " + customWhere(c), true));
     });
   }
 
   /* ---- add your own ---- */
-  var draft = { label: "", max: 3, band: "symptoms", base: 0 };
+  var draft = { label: "", max: 3, band: "symptoms", section: "", base: 0 };
   var addMsg = el("div", { class: "msg", style: { display: "none" } });
   var nameField = el("input", { type: "text", placeholder: "Name it" });
   nameField.addEventListener("input", function () { draft.label = nameField.value; });
@@ -2407,7 +2438,25 @@ function settingsTrack(wrap) {
   wrap.appendChild(chipRow(
     [{ label: "Symptoms", value: "symptoms" }, { label: "Exertion", value: "exertion" },
      { label: "Night", value: "night" }],
-    function () { return draft.band; }, function (v) { draft.band = v; }));
+    function () { return draft.band; },
+    function (v) { draft.band = v; paintCat(); }));
+
+  /* A symptom can also pick the section it sits in. Exertion and Night each
+     have one section already, so the question only makes sense for symptoms. */
+  var catHost = el("div");
+  function paintCat() {
+    catHost.innerHTML = "";
+    if (draft.band !== "symptoms") return;
+    var options = symptomSectionTitles().map(function (t) { return { label: t, value: t }; });
+    options.push({ label: "Your own", value: "" });
+    catHost.appendChild(el("div", { class: "field-label", text: "Which group" }));
+    catHost.appendChild(chipRow(options,
+      function () { return draft.section; },
+      function (v) { draft.section = v; }));
+  }
+  paintCat();
+  wrap.appendChild(catHost);
+
   var baseHost = el("div");
   function paintBase() {
     baseHost.innerHTML = "";
@@ -2427,8 +2476,9 @@ function settingsTrack(wrap) {
       var label = (draft.label || "").trim();
       if (!label) { addMsg.textContent = "Give it a name first."; addMsg.style.display = ""; return; }
       var key = "c" + Date.now().toString(36);
-      state.custom = (state.custom || []).concat([
-        { key: key, label: label, max: draft.max, band: draft.band }]);
+      var entry = { key: key, label: label, max: draft.max, band: draft.band };
+      if (draft.band === "symptoms" && draft.section) entry.section = draft.section;
+      state.custom = (state.custom || []).concat([entry]);
       state.baselines[key] = draft.base;
       saveNow(); rebuildItems(); render(true);
     }}));

@@ -181,6 +181,14 @@ and you can add your own.
   form rather than in a separate trip to Baselines. It then behaves like any other item —
   it gets a baseline, joins the matching score, appears in the chart picker and
   exports under its own name. Removing one keeps its history in the export.
+- **Which group** appears for a symptom only, because Exertion and Night each
+  have a single section already. Pick Energy, Brain, Body or Gut and the item
+  sits at the end of that section in the evening form, beside the built-in items
+  it belongs with. Pick *Your own* — the default — and it lands in a section of
+  that name at the end of the Symptoms band, which is where every custom symptom
+  went before this existed, so anything added earlier stays put. A group whose
+  built-in items are all hidden still appears if a custom item is filed under it,
+  and an item whose group no longer exists falls back to *Your own*.
 
 Both scores are an average across the items tracked, **so hiding or adding one
 changes what the number is an average of.** Scores from before a change are not
