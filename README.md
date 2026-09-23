@@ -168,6 +168,52 @@ explains it cannot disagree about what counted.
 The panel's day weights are derived from the same half life the score uses
 rather than copied, so the two cannot drift apart.
 
+### The chart axis fits the fortnight
+
+The week score is a mean across about twenty symptom items, and on any given
+day most of them sit at baseline. So it lives in a narrow band — roughly 70 to
+90 for a typical run of days — and against a fixed 0-100 axis every fortnight
+drew as the same flat line whatever the fortnight did.
+
+The axis now fits the data in the window. Three guards stop that from
+misleading:
+
+- It never narrows below **15 points**. The score moves about two and a half
+  points per symptom item that shifts one step, so fifteen points is roughly
+  six items changing — more than a week of noise, and small enough that an
+  ordinary fortnight still fills a useful part of the height.
+- It pads and rounds outward to fives, so the highest and lowest points are not
+  glued to the rules, and it slides back inside 0-100 rather than squeezing, so
+  a score near either end keeps the same amount of axis as one in the middle.
+- **Both ends are labelled on the chart** and the caption says what the window
+  is. An axis that does not start at zero and does not say so is the oldest
+  chart lie there is. Position carries the value here rather than length, so a
+  truncated axis is fair as long as it is legible.
+
+The Home small multiples still share one fixed 0-100 axis on purpose. There the
+point is comparing rows against each other, which a per-row axis would break.
+
+### Why the week score sits high
+
+Not a bug, and worth knowing before reading the number as a percentage. Three
+things push it up:
+
+- **It is a mean over every tracked symptom item.** Items at baseline
+  contribute zero. On a real day five to eight of about twenty move, so a
+  genuinely rough day still lands near 70 rather than near 0. Measured on the
+  built-in set: three items one step worse scores 88, five scores 80, eight
+  scores 71. Every item one step worse scores 42; every item at its worst
+  scores 2. The bottom of the scale is real but nothing short of catastrophe
+  reaches it.
+- **Better than baseline earns nothing.** `itemBurden` floors at zero, so a
+  good day and a normal day are the same number. The distribution is pressed
+  against the ceiling by design.
+- **Then seven days are averaged**, which smooths what is left.
+
+The consequence to hold on to: **the number is comparable with your own recent
+numbers, not with a percentage.** An 80 is not "80% well". The useful reading is
+80 against last week's 84.
+
 ## What is tracked is a setting
 
 Settings → **What to track**. Every item can be hidden,

@@ -2,7 +2,7 @@
    When you change anything here, bump VERSION below AND the cache name at the
    top of sw.js. The version in the corner is how you check a new build loaded. */
 
-var VERSION = "v1.24.0";
+var VERSION = "v1.25.0";
 var STORE_KEY = "sr-daily-log-v1";
 var STORE_VERSION = 3;
 
@@ -1168,11 +1168,53 @@ function scoreHistory(kind) {
 
 /* One line, fourteen points, fixed 0-100. A single series needs no legend —
    the heading above it says what it is. */
+/* A fortnight of the week score lives inside about ten points, because the
+   score is a mean across twenty symptom items and most of them sit at baseline
+   on any given day. Drawn against a fixed 0-100 axis that is a flat line every
+   week, whatever the week did. So the axis fits the fortnight instead.
+
+   Three guards keep a zoomed axis from lying. It never narrows below
+   MIN_SPAN, so an unremarkable week is not magnified into drama. It pads and
+   rounds outward to fives, so the highest and lowest points are not glued to
+   the rules. And both ends are labelled on the chart, because an axis that
+   does not start at zero and does not say so is the oldest chart lie there is.
+   Position carries the value here, not length, so a truncated axis is fair as
+   long as it is legible.
+
+   MIN_SPAN is 15 because of what the score does, not taste. The week score
+   moves about two and a half points per symptom item that shifts one step, so
+   fifteen points is roughly six items changing — comfortably more than a week
+   of noise, and small enough that an ordinary fortnight still fills a useful
+   part of the height. */
+var MIN_SPAN = 15;
+
+function chartBounds(points) {
+  var lo = null, hi = null;
+  points.forEach(function (p) {
+    if (p.value === null) return;
+    if (lo === null || p.value < lo) lo = p.value;
+    if (hi === null || p.value > hi) hi = p.value;
+  });
+  if (lo === null) return { lo: 0, hi: 100 };
+  lo -= 2; hi += 2;
+  var grow = (MIN_SPAN - (hi - lo)) / 2;
+  if (grow > 0) { lo -= grow; hi += grow; }
+  lo = Math.floor(lo / 5) * 5;
+  hi = Math.ceil(hi / 5) * 5;
+  /* Push the window back inside 0-100 rather than squeezing it, so a score
+     near either end keeps the same amount of axis as one in the middle. */
+  if (lo < 0) { hi = Math.min(100, hi - lo); lo = 0; }
+  if (hi > 100) { lo = Math.max(0, lo - (hi - 100)); hi = 100; }
+  return { lo: lo, hi: hi };
+}
+
 function detailChart(points, colour) {
-  var W = 320, H = 100, padL = 6, padR = 6, padT = 10, padB = 10;
+  var W = 320, H = 100, padL = 26, padR = 6, padT = 10, padB = 10;
   var plotW = W - padL - padR, plotH = H - padT - padB;
+  var b = chartBounds(points);
+  var span = b.hi - b.lo;
   var x = function (i) { return padL + (plotW * i) / (points.length - 1); };
-  var y = function (v) { return padT + plotH * (1 - v / 100); };
+  var y = function (v) { return padT + plotH * (1 - (v - b.lo) / span); };
   var ns = "http://www.w3.org/2000/svg";
   var svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
@@ -1182,9 +1224,17 @@ function detailChart(points, colour) {
     Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
     return n;
   }
-  [0, 50, 100].forEach(function (v) {
+  [b.lo, (b.lo + b.hi) / 2, b.hi].forEach(function (v, i) {
     svg.appendChild(node("line", { x1: padL, x2: padL + plotW, y1: y(v), y2: y(v),
-      stroke: "#252D36", "stroke-width": v === 0 ? 1 : 0.5 }));
+      stroke: "#252D36", "stroke-width": i === 0 ? 1 : 0.5 }));
+  });
+  /* Only the two ends are labelled. A number on the middle rule as well is one
+     more thing to read at 2am for nothing. */
+  [b.lo, b.hi].forEach(function (v) {
+    var t = node("text", { x: padL - 5, y: y(v) + 3, "text-anchor": "end",
+      "font-size": 9, fill: "#77828E" });
+    t.textContent = String(v);
+    svg.appendChild(t);
   });
   var run = [];
   function flush() {
@@ -1269,8 +1319,13 @@ function detailScreen() {
   ]));
 
   wrap.appendChild(el("h2", { class: "section-head panel-head", text: "Last 14 days" }));
-  wrap.appendChild(detailChart(scoreHistory(kind), kind === "pem" ? SERIES_DETAIL.pem : SERIES_DETAIL.week));
-  wrap.appendChild(el("div", { class: "strip-cap", text: "0-100, same scale as the number above" }));
+  var hist = scoreHistory(kind);
+  var bounds = chartBounds(hist);
+  wrap.appendChild(detailChart(hist, kind === "pem" ? SERIES_DETAIL.pem : SERIES_DETAIL.week));
+  wrap.appendChild(el("div", { class: "strip-cap",
+    text: bounds.lo === 0 && bounds.hi === 100
+      ? "0-100, same scale as the number above"
+      : "Axis zoomed to " + bounds.lo + "-" + bounds.hi + ". The full scale is 0-100." }));
 
   var made = contributions(kind);
   wrap.appendChild(el("h2", { class: "section-head panel-head",
